@@ -33,6 +33,7 @@ from pathlib import Path
 # deliberately absent: that is where these figures are supposed to live.
 SCANNED_DIRS = [
     Path("crates/casivell-core/src"),
+    Path("crates/casivell-social/src"),
     Path("crates/casivell-tax/src"),
 ]
 
@@ -54,8 +55,15 @@ WATCHED = {
     "43_142": "Durchschnittsentgelt as wrongly specified",
     "50_493": "Durchschnittsentgelt 2025",
     "51_944": "Durchschnittsentgelt 2026",
-    "96_600": "pension contribution ceiling 2025",
-    "101_400": "pension contribution ceiling 2026",
+    "96_600": "pension contribution ceiling 2025, annual",
+    "101_400": "pension contribution ceiling 2026, annual",
+    "8_050": "pension and unemployment ceiling 2025, monthly",
+    "8_450": "pension and unemployment ceiling 2026, monthly",
+    "69_750": "health contribution ceiling 2026, annual",
+    "73_800": "Jahresarbeitsentgeltgrenze 2025",
+    "77_400": "Jahresarbeitsentgeltgrenze 2026",
+    "3_745": "Bezugsgröße 2025, monthly",
+    "3_955": "Bezugsgröße 2026, monthly",
     # Solidaritaetszuschlag, SolzG
     "19_950": "Soli Freigrenze 2025",
     "20_350": "Soli Freigrenze 2026",

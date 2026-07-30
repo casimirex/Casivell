@@ -54,12 +54,16 @@
 
 pub mod income_tax;
 pub mod provenance;
+pub mod retirement;
 pub mod social;
 pub mod surcharges;
 
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use provenance::{DataStatus, Provenance};
-pub use social::{CareInsurance, HealthInsurance, PensionInsurance, SocialParameters};
+pub use retirement::{MONTHS_PER_YEAR, RetirementParameters, retirement_age_months};
+pub use social::{
+    CareInsurance, HealthInsurance, PensionInsurance, SocialParameters, UnemploymentInsurance,
+};
 pub use surcharges::{Bundesland, ChurchTaxParameters, SolidarityParameters};
 
 use casivell_core::{MoneyError, TaxYear};
@@ -81,6 +85,8 @@ pub struct LawYear {
     pub solidarity: SolidarityParameters,
     /// Church tax rates.
     pub church_tax: ChurchTaxParameters,
+    /// Retirement age and Zugangsfaktor parameters, SGB VI.
+    pub retirement: RetirementParameters,
 }
 
 impl LawYear {
@@ -108,12 +114,17 @@ impl LawYear {
             Ok(c) => c,
             Err(e) => return Err(e),
         };
+        let retirement = match RetirementParameters::for_year(year) {
+            Ok(r) => r,
+            Err(e) => return Err(e),
+        };
         Ok(Self {
             year,
             income_tax,
             social,
             solidarity,
             church_tax,
+            retirement,
         })
     }
 
@@ -129,6 +140,7 @@ impl LawYear {
             .weakest(self.social.status())
             .weakest(self.solidarity.provenance.status)
             .weakest(self.church_tax.provenance.status)
+            .weakest(self.retirement.provenance.status)
     }
 }
 

@@ -56,27 +56,39 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | Crate | Contents |
 |---|---|
 | `casivell-core` | `Money` (integer cents), `Rate` (integer ppm), named rounding, `TaxYear`. `#![no_std]`, `#![forbid(unsafe_code)]`, no panicking operators. |
-| `casivell-lawdata` | Year-keyed statutory tables for 2025 and 2026, each with a `Provenance`. Income tax tariff, pension, health, care, Soli, church tax, all 16 Bundesländer. |
-| `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. No statutory literals. |
+| `casivell-lawdata` | Year-keyed statutory tables for 2025 and 2026, each with a `Provenance`. Income tax tariff, pension, unemployment, health, care, Soli, church tax, retirement ages, all 16 Bundesländer. |
+| `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. |
+| `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
 
-**102 tests pass.** The engine builds for `wasm32-unknown-unknown`.
+**159 tests pass.** The engine builds for `wasm32-unknown-unknown` and has zero
+third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
 [SVBezGrV 2026](https://www.gesetze-im-internet.de/svbezgrv_2026/BJNR1160A0025.html),
 [SVBezGrV 2025](https://www.gesetze-im-internet.de/svbezgrv_2025/BJNR16D0A0024.html),
 [§ 55 SGB XI](https://www.gesetze-im-internet.de/sgb_11/__55.html),
+[§ 341 SGB III](https://www.gesetze-im-internet.de/sgb_3/__341.html),
+[§ 77 SGB VI](https://www.gesetze-im-internet.de/sgb_6/__77.html),
+[§ 235 SGB VI](https://www.gesetze-im-internet.de/sgb_6/__235.html),
 [SolzG 1995](https://www.gesetze-im-internet.de/solzg_1995/__3.html), and the
 [DRV pension adjustment announcement](https://www.deutsche-rentenversicherung.de/DRV/DE/Ueber-uns-und-Presse/Presse/Meldungen/2026/260305-rentenanpassung-2026).
+
+Two figures are checkable against externally published results and match exactly:
+the DRV "Standardrentner" pension of **1 913,40 €** from 1 July 2026 (45 points ×
+42,52 €), and the announced **77,85 €** monthly increase at that adjustment.
 
 ### Known gaps, recorded rather than hidden
 
 | Gap | Effect | Where recorded |
 |---|---|---|
+| zvE determination | **Not implemented at all** — the tariff takes an already-determined taxable income | `casivell-tax` crate docs |
+| Lohnsteuer (payroll withholding) | No gross→net yet; needs the BMF Programmablaufplan and its Vorsorgepauschale | `casivell-social` crate docs |
 | § 51a Abs. 2 EStG church tax base | Church tax **overstated for families** | `ChurchTaxResult::base_is_exact` |
 | Kirchensteuer-Kappung | Overstated at high incomes | `ChurchTaxParameters` docs |
 | Soli rounding direction | Up to 1 cent | `solidarity_surcharge` docs |
-| zvE determination | **Not implemented at all** — the tariff takes an already-determined taxable income | `casivell-tax` crate docs |
-| Lohnsteuer (payroll withholding) | Distinct algorithm; monthly net requires the BMF Programmablaufplan | `casivell-tax` crate docs |
+| Minijob / Übergangsbereich | Contributions are wrong below the Midijob threshold | `casivell-social` crate docs |
+| PKV | Only statutory health insurance is modelled; no GKV/PKV comparison | this table |
+| Current-year Durchschnittsentgelt | Provisional by statute, so current-year points shift when the final figure lands | `EntgeltPoints::accrued_in_year` |
 
 The zvE gap is the largest. Deductions, Werbungskosten, Sonderausgaben and
 außergewöhnliche Belastungen are where a household simulator earns or loses its
@@ -144,14 +156,33 @@ optimistic by roughly 3–4×; these estimates assume things go wrong.
 ### Phase 0 — Foundation ✅ *complete*
 
 Money/rate primitives, cited law tables for 2025–26, § 32a tariff, Soli, church
-tax, coding standard, CI. 102 tests.
+tax, coding standard, CI.
 
-### Phase 1 — Social insurance and net income · ~3 weeks
+### Phase 1 — Social insurance and net income · *in progress*
 
-- [ ] Pension: Entgeltpunkte accrual, mid-year Rentenwert change, projection to retirement
-- [ ] GKV/PKV contributions incl. ceilings, the employee-only childless surcharge, the Saxon split
-- [ ] `casivell-net`: gross → net for an employee, composing tax and social insurance
-- [ ] Cross-check against the BMF Programmablaufplan
+- [x] **Pension entitlement.** Entgeltpunkte accrual against the annual
+      Durchschnittsentgelt with the contribution ceiling applied; the asymmetric
+      Zugangsfaktor (−0.3 %/month early, +0.5 %/month deferred); the § 235 SGB VI
+      retirement-age transition, which is still running and is *not* a flat 67; and
+      the mid-year Rentenwert change on 1 July.
+- [x] **Statutory social insurance contributions.** All four branches with correct
+      incidence: the two independent contribution ceilings, the employee-only
+      childless care surcharge, the per-child care reductions that reduce only the
+      employee's share, and the Saxon 0.5-point shift. Fund-specific Zusatzbeitrag
+      overrides the published average.
+- [ ] **`casivell-net`: gross → net.** Blocked on the item below — see the note.
+- [ ] **Lohnsteuer via the BMF Programmablaufplan**, including the
+      Vorsorgepauschale of § 39b Abs. 2 Satz 5 Nr. 3 EStG.
+- [ ] PKV, and the GKV/PKV comparison.
+- [ ] Minijob and the Übergangsbereich sliding scale.
+
+**Why gross→net is not done yet.** It needs *Lohnsteuer*, and Lohnsteuer is not the
+annual assessment already in `casivell-tax`: it is the BMF Programmablaufplan, a
+separate algorithm with its own allowances, its own Vorsorgepauschale, and its own
+rounding. Approximating it — say, by annualising and applying § 32a — would produce
+a monthly net figure wrong by tens of euros while looking authoritative. That is
+precisely the failure documented in `docs/ROADMAP_ERRATA.md`, so the PAP gets its
+own increment rather than a shortcut.
 
 **Done when:** gross-to-net matches a published Brutto-Netto-Rechner to the cent
 for a documented matrix of cases.

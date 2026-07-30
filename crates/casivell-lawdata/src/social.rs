@@ -122,6 +122,27 @@ pub struct CareInsurance {
     pub provenance: Provenance,
 }
 
+/// Unemployment insurance, SGB III.
+///
+/// Shares the pension insurance contribution ceiling — both are set to the same
+/// figure by the annual SVBezGrV. The value is nonetheless stored here rather than
+/// read from [`PensionInsurance`], because the two being equal is a recurring
+/// legislative choice, not a structural identity: they could diverge, and a
+/// reviewer should be able to check this figure against the ordinance without
+/// first working out which other field it borrows from. The
+/// `unemployment_and_pension_share_a_ceiling` test asserts the equality holds for
+/// every shipped year, so a genuine divergence surfaces as a test failure rather
+/// than as silently wrong arithmetic.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UnemploymentInsurance {
+    /// Combined employer and employee contribution rate, § 341 Abs. 2 SGB III.
+    pub contribution_rate: Rate,
+    /// Monthly Beitragsbemessungsgrenze.
+    pub ceiling_monthly: Money,
+    /// Citation.
+    pub provenance: Provenance,
+}
+
 /// All social insurance parameters for one year.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SocialParameters {
@@ -129,6 +150,8 @@ pub struct SocialParameters {
     pub year: TaxYear,
     /// Pension insurance.
     pub pension: PensionInsurance,
+    /// Unemployment insurance.
+    pub unemployment: UnemploymentInsurance,
     /// Health insurance.
     pub health: HealthInsurance,
     /// Long-term care insurance.
@@ -152,12 +175,13 @@ impl SocialParameters {
         }
     }
 
-    /// The weakest [`DataStatus`] across the three branches.
+    /// The weakest [`DataStatus`] across the four branches.
     #[must_use]
     pub const fn status(&self) -> DataStatus {
         self.pension
             .provenance
             .status
+            .weakest(self.unemployment.provenance.status)
             .weakest(self.health.provenance.status)
             .weakest(self.care.provenance.status)
     }
@@ -211,6 +235,16 @@ const SOCIAL_2025: SocialParameters = SocialParameters {
             DataStatus::Enacted,
         ),
     },
+    unemployment: UnemploymentInsurance {
+        contribution_rate: pct_milli(2_600),
+        ceiling_monthly: euro(8_050, 0),
+        provenance: Provenance::new(
+            "§ 341 Abs. 2 SGB III, SVBezGrV 2025",
+            "https://www.gesetze-im-internet.de/sgb_3/__341.html",
+            "2026-07-30",
+            DataStatus::Enacted,
+        ),
+    },
     health: HealthInsurance {
         general_rate: pct_milli(14_600),
         average_supplementary_rate: pct_milli(2_500),
@@ -239,6 +273,16 @@ const SOCIAL_2026: SocialParameters = SocialParameters {
         provenance: Provenance::new(
             "§ 158 SGB VI, Anlage 1 SGB VI, SVBezGrV 2026, RWBestV 2026",
             "https://www.gesetze-im-internet.de/svbezgrv_2026/BJNR1160A0025.html",
+            "2026-07-30",
+            DataStatus::Enacted,
+        ),
+    },
+    unemployment: UnemploymentInsurance {
+        contribution_rate: pct_milli(2_600),
+        ceiling_monthly: euro(8_450, 0),
+        provenance: Provenance::new(
+            "§ 341 Abs. 2 SGB III, SVBezGrV 2026",
+            "https://www.gesetze-im-internet.de/sgb_3/__341.html",
             "2026-07-30",
             DataStatus::Enacted,
         ),
@@ -304,6 +348,7 @@ mod tests {
                 ("health ceiling", p.health.ceiling_monthly),
                 ("JAEG", p.health.compulsory_insurance_threshold_annual),
                 ("Bezugsgröße", p.reference_value_monthly),
+                ("unemployment ceiling", p.unemployment.ceiling_monthly),
             ];
             for (name, amount) in amounts {
                 assert!(
@@ -315,6 +360,7 @@ mod tests {
             }
             let rates = [
                 ("pension rate", p.pension.contribution_rate),
+                ("unemployment rate", p.unemployment.contribution_rate),
                 ("GKV general rate", p.health.general_rate),
                 (
                     "GKV supplementary rate",
@@ -552,10 +598,56 @@ mod tests {
         assert_eq!(saxon, Rate::from_percent_millis(2_900).expect("valid rate"));
     }
 
+    /// Pension and unemployment insurance are set to the same ceiling by each
+    /// annual SVBezGrV. The two are stored separately (see
+    /// [`UnemploymentInsurance`]), so this asserts the equality rather than
+    /// assuming it — and would fail loudly on the day the legislature separates
+    /// them, which is the outcome we want.
+    #[test]
+    fn unemployment_and_pension_share_a_ceiling() {
+        for p in every_year() {
+            assert_eq!(
+                p.unemployment.ceiling_monthly,
+                p.pension.ceiling_monthly,
+                "{}: the unemployment and pension ceilings have diverged",
+                p.year.get()
+            );
+        }
+    }
+
+    /// 2.6 % combined, so 1.3 % each side — and the halving must be exact, or the
+    /// two shares would not reconstruct the whole.
+    #[test]
+    fn the_unemployment_rate_halves_exactly() {
+        for p in every_year() {
+            let half = p
+                .unemployment
+                .contribution_rate
+                .half()
+                .expect("half of 2.6 % is a valid rate");
+            assert_eq!(
+                half,
+                Rate::from_percent_millis(1_300).expect("valid rate"),
+                "{}: the employee share is not 1.3 %",
+                p.year.get()
+            );
+            // Exactness: two halves must reconstitute the combined rate.
+            assert_eq!(
+                half.add(half).expect("valid rate"),
+                p.unemployment.contribution_rate
+            );
+        }
+    }
+
     #[test]
     fn every_branch_cites_a_primary_source_and_is_enacted() {
         for p in every_year() {
-            for prov in [p.pension.provenance, p.health.provenance, p.care.provenance] {
+            for prov in [
+                p.pension.provenance,
+                p.unemployment.provenance,
+                p.health.provenance,
+                p.care.provenance,
+            ] {
                 assert!(
                     prov.source_url
                         .starts_with("https://www.gesetze-im-internet.de/"),

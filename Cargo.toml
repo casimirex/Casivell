@@ -1,6 +1,11 @@
 [workspace]
 resolver = "3"
-members = ["crates/casivell-core", "crates/casivell-lawdata", "crates/casivell-tax"]
+members = [
+    "crates/casivell-core",
+    "crates/casivell-lawdata",
+    "crates/casivell-social",
+    "crates/casivell-tax",
+]
 
 [workspace.package]
 edition = "2024"

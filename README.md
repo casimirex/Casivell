@@ -40,14 +40,15 @@ cannot check is a number asking for trust it has not earned.
 crates/
 ├── casivell-core/      Money (integer cents), Rate (integer ppm), named rounding
 ├── casivell-lawdata/   Year-keyed statutory tables, every figure cited
-└── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
+├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
+└── casivell-social/    Social insurance contributions, pension entitlement
 ```
 
 The dependency direction is the design: `core` knows nothing of German law;
 `lawdata` holds law but performs no calculation; calculation crates hold no
 statutory constants. Each layer can be reviewed on its own.
 
-All three are `#![no_std]` and `#![forbid(unsafe_code)]`. Zero third-party
+All four are `#![no_std]` and `#![forbid(unsafe_code)]`. Zero third-party
 dependencies.
 
 ---
@@ -58,7 +59,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 102 tests
+cargo test --workspace                                        # 159 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
