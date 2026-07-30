@@ -33,6 +33,8 @@ from pathlib import Path
 # deliberately absent: that is where these figures are supposed to live.
 SCANNED_DIRS = [
     Path("crates/casivell-core/src"),
+    Path("crates/casivell-payroll/src"),
+    Path("crates/casivell-projection/src"),
     Path("crates/casivell-social/src"),
     Path("crates/casivell-tax/src"),
 ]

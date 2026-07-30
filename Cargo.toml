@@ -5,6 +5,7 @@ members = [
     "crates/casivell-core",
     "crates/casivell-lawdata",
     "crates/casivell-payroll",
+    "crates/casivell-projection",
     "crates/casivell-social",
     "crates/casivell-tax",
 ]

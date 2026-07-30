@@ -192,10 +192,10 @@ impl IncomeTaxTariff {
 const TARIFF_2025: IncomeTaxTariff = IncomeTaxTariff {
     year: match TaxYear::new(2025) {
         Ok(y) => y,
-        // `TaxYear::MIN` is 2025, so this is unreachable. A `const` panic here
+        // `TaxYear::FIRST_VERIFIED` is 2025, so this is unreachable. A `const` panic here
         // would be caught at compile time; instead the table is written so that
         // no panicking construct appears in it at all.
-        Err(_) => TaxYear::MIN,
+        Err(_) => TaxYear::FIRST_VERIFIED,
     },
     basic_allowance_euro: 12_096,
     first_progression: ProgressionZone {
@@ -245,7 +245,7 @@ const TARIFF_2025: IncomeTaxTariff = IncomeTaxTariff {
 const TARIFF_2026: IncomeTaxTariff = IncomeTaxTariff {
     year: match TaxYear::new(2026) {
         Ok(y) => y,
-        Err(_) => TaxYear::MAX,
+        Err(_) => TaxYear::LAST_VERIFIED,
     },
     basic_allowance_euro: 12_348,
     first_progression: ProgressionZone {
@@ -324,8 +324,8 @@ mod tests {
     /// with the `TaxYear` range. This catches that.
     #[test]
     fn every_supported_year_has_a_tariff() {
-        let mut year = TaxYear::MIN.get();
-        while year <= TaxYear::MAX.get() {
+        let mut year = TaxYear::FIRST_VERIFIED.get();
+        while year <= TaxYear::LAST_VERIFIED.get() {
             let tax_year = TaxYear::new(year).expect("in range");
             assert!(
                 IncomeTaxTariff::for_year(tax_year).is_ok(),

@@ -60,9 +60,10 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. |
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
 | `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; net pay for a month or a year. |
-| `casivell-cli` | The `casivell` command: a payslip with its full derivation and stated limits. The only crate using `std`. |
+| `casivell-projection` | Statutory parameters past the last enacted year, derived from explicit assumptions and marked `Projected`. |
+| `casivell-cli` | The `casivell` command: a payslip with its full derivation, and a view of the parameters for any year. The only crate using `std`. |
 
-**238 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
+**291 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -88,6 +89,10 @@ Three independent checks against figures Casivell did not derive:
   match.
 - **An independent decimal implementation** of § 32a in `docs/reference/`, agreeing
   with the engine's integer algebra across the whole curve.
+- **The tariff derivation.** § 32a's coefficients follow from its Eckwerte, because the
+  marginal rate is pinned at each zone join. Applying that derivation to the *enacted*
+  Eckwerte reproduces all eight published coefficients for both 2025 and 2026 exactly —
+  which is what makes a *projected* tariff credible rather than fabricated.
 
 ### Known gaps, recorded rather than hidden
 
@@ -213,12 +218,13 @@ The largest correctness risk in the product.
 - [ ] Kapitalerträge: Abgeltungsteuer, Sparer-Pauschbetrag
 - [ ] Tax class comparison III/V vs IV+Faktor — flagging the planned move to Faktorverfahren
 
-### Phase 3 — Simulation kernel · ~3 weeks
+### Phase 3 — Simulation kernel · ~3 weeks · *unblocked, next*
 
 - [ ] Month-by-month household projection over 40 years
 - [ ] Real vs. nominal toggle, inflation indexing
 - [ ] Monte Carlo over market returns and wage growth
-- [ ] `DataStatus::Projected` for every year past the last enacted statute, surfaced in the UI
+- [x] `DataStatus::Projected` for every year past the last enacted statute — done in
+      Phase 4.5; the kernel calls `casivell_projection::resolve`
 
 **Performance:** 10 000 paths × 480 months is 4.8 M month-steps — tens of
 milliseconds single-threaded for a lean integer kernel. Threading needs
@@ -233,24 +239,47 @@ first and measure before paying that cost.
 - [ ] Scenario DAG: fork, compare, diff
 - [ ] Export/import JSON; encryption at rest via `SubtleCrypto`
 
-### Phase 4.5 — Projected law years · ~1 week · *next*
+### Phase 4.5 — Projected law years ✅ *complete*
 
-**This is the blocker for everything in Phase 3.** `TaxYear::MAX` is 2026, so
-`LawYear::for_year(2027)` returns `YearOutOfRange` *by design* — a 40-year projection
-cannot run at all today. That refusal is correct, and the fix is not to widen the
-range but to make extrapolation explicit:
+`TaxYear::MAX` was 2026, so `LawYear::for_year(2027)` refused **by design** and no
+projection could run at all. The fix was not to widen the verified range but to
+separate two properties that had been conflated:
 
-- [ ] A `ProjectedLawYear` that derives parameters beyond the last enacted year from
-      named, user-editable assumptions — price inflation for the Grundfreibetrag and
-      the tariff Eckwerte, wage growth for the contribution ceilings and the
-      Durchschnittsentgelt, the § 68 SGB VI formula for the Rentenwert.
-- [ ] Every such year carries `DataStatus::Projected`, so `LawYear::status()` already
-      propagates it to any result computed from it — the machinery exists and is
-      untested against a real projection.
-- [ ] The assumptions are inputs, never hidden constants. See §10 item 3.
+- [x] **Representable versus verified.** `TaxYear` now spans a century, and
+      `has_verified_data()` reports whether a statute has been transcribed. The safety
+      property moved to where it belongs — `LawYear::for_year` still refuses any year
+      it cannot cite.
+- [x] **`casivell-projection`**, a separate crate so `casivell-lawdata` keeps the
+      property its design rests on: everything there is transcribed law, everything in
+      the new crate is forecast, and no figure can be both.
+- [x] **Explicit assumptions.** Nothing projected is obtainable without passing
+      `Assumptions` — price inflation for the tariff Eckwerte and the Soli Freigrenze,
+      wage growth for the ceilings, the Durchschnittsentgelt and the Rentenwert. Every
+      rate is held constant, because there is no indexation rule for a political
+      decision and a formula would dress a guess as a method.
+- [x] **`DataStatus::Projected` propagates.** `LawYear::status()` already took the
+      weakest status of its inputs; that machinery is now exercised by a real
+      projection, and the CLI's `law` view leads with the warning.
+- [x] **Statutory rounding reproduced.** Contribution ceilings snap to their statutory
+      grids — a multiple of 600 € annually for pensions (§ 159 SGB VI), 450 € for
+      health (§ 6 Abs. 7 SGB V). Given the wage growth the SVBezGrV 2026 itself cites,
+      the mechanism reproduces both enacted 2026 ceilings exactly.
 
-Doing this before Phase 3 rather than during it keeps the enacted/projected
-distinction a type-level property instead of a convention.
+**Two findings worth recording.**
+
+The § 32a coefficients are not free parameters — the marginal rate is fixed at each
+zone join, which determines all of them from the Eckwerte. So a projected tariff is
+*derived*, and the derivation is validated by reproducing both enacted years exactly.
+
+And because the 45 % threshold has not been indexed since 2007, a long enough
+projection has the 42 % threshold overtake it and the tariff stops being well formed.
+Casivell refuses rather than returning nonsense. At the default 2 % that happens in
+**2096** — seventy years out, well past any household horizon, and the refusal is
+itself the model saying a frozen Reichensteuer threshold cannot hold indefinitely.
+
+**Not projected:** `PayrollParameters`. The Programmablaufplan is an annual
+administrative instrument, not a formula, and payroll withholding for 2055 is not a
+question a household projection asks — it wants the annual assessment.
 
 ### Phase 5 — UI · ~5 weeks
 
@@ -385,9 +414,10 @@ Recorded rather than assumed, and each names what would resolve it.
 2. **Which Zusatzbeitrag to default to.** The 2.9 % average is published for funds
    without their own rate; real rates vary by over a point. *Resolve:* require the
    user to pick their fund, defaulting to the average with a visible caveat.
-3. **How to project past the last enacted year.** Extrapolating the Grundfreibetrag
-   at trend inflation is defensible but is a guess. *Resolve:* make the assumption a
-   user-visible, user-editable input, never a hidden constant.
+3. ~~**How to project past the last enacted year.**~~ **Resolved in Phase 4.5.** The
+   assumptions are a required, user-editable input (`--inflation`, `--wage-growth`),
+   never a hidden constant, and everything derived from them is marked `Projected` and
+   labelled as such wherever it surfaces.
 4. **Steuerklassen III/V abolition.** Slated for replacement by the
    Faktorverfahren. *Resolve:* model as a scenario toggle once a date is enacted.
 5. **Bürgergeld → Neue Grundsicherung.** Reform in progress; parameters not settled.

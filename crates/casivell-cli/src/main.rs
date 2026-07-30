@@ -33,12 +33,14 @@
 
 mod args;
 mod format;
+mod law_report;
 mod report;
 
 use std::process::ExitCode;
 
 use casivell_core::TaxYear;
 use casivell_payroll::{Employment, HealthCover, PayrollLaw, net_pay};
+use casivell_projection::resolve;
 use casivell_social::Insured;
 
 use args::Request;
@@ -48,7 +50,12 @@ const USAGE: &str = "\
 casivell — German payroll and net pay, computed from statute
 
 USAGE
-  casivell --gross <amount> --class <1-6> [options]
+  casivell --gross <amount> --class <1-6> [options]     a payslip
+  casivell law --year <year> [--inflation <p>] [--wage-growth <p>]
+
+The `law` form prints the statutory parameters for a year. Past 2026 no statute
+exists, so the figures are projected from explicit assumptions and labelled as
+such — see --inflation and --wage-growth.
 
 REQUIRED
   -g, --gross <amount>    Gross pay for the period (4500, 4500,50 or 4.500,50)
@@ -65,8 +72,14 @@ OPTIONS
       --kvz <percent>     The health fund's full supplementary rate (default 2,9)
   -h, --help              This text
 
+LAW OPTIONS
+      --inflation <p>     Annual price inflation for projection (default 2,0)
+      --wage-growth <p>   Annual wage growth for projection (default 2,8)
+
 EXAMPLES
   casivell --gross 4500 --class 1
+  casivell law --year 2026
+  casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
   casivell --gross 3200 --class 3 --state BY --children 2 --church
   casivell --gross 72000 --period year --class 1 --kvz 1,7
 
@@ -85,7 +98,14 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    match run(argv) {
+    let is_law = argv.first().is_some_and(|a| a == "law");
+    let outcome = if is_law {
+        run_law(argv.into_iter().skip(1).collect())
+    } else {
+        run(argv)
+    };
+
+    match outcome {
         Ok(text) => {
             print!("{text}");
             ExitCode::SUCCESS
@@ -98,6 +118,22 @@ fn main() -> ExitCode {
     }
 }
 
+/// Renders the statutory parameters for a year, projecting past the last enacted one.
+fn run_law(argv: Vec<String>) -> Result<String, String> {
+    let (year_value, assumptions) = args::parse_law(argv).map_err(|e| e.to_string())?;
+
+    let year = TaxYear::new(year_value).map_err(|_| {
+        format!(
+            "{year_value} is outside the representable range {}–{}.",
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_REPRESENTABLE.get(),
+        )
+    })?;
+
+    let law = resolve(year, &assumptions).map_err(|e| e.to_string())?;
+    law_report::render(&law, &assumptions).map_err(|e| e.to_string())
+}
+
 /// Parses, computes and renders. Returns a message suitable for stderr on failure.
 fn run(argv: Vec<String>) -> Result<String, String> {
     let request = Request::parse(argv).map_err(|e| e.to_string())?;
@@ -108,8 +144,8 @@ fn run(argv: Vec<String>) -> Result<String, String> {
              Casivell refuses to compute a year it cannot cite rather than \
              substituting a nearby one.",
             request.year,
-            TaxYear::MIN.get(),
-            TaxYear::MAX.get(),
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_VERIFIED.get(),
         )
     })?;
 
@@ -172,10 +208,56 @@ fn compute(
 
 #[cfg(test)]
 mod tests {
-    use super::run;
+    use super::{run, run_law};
 
     fn argv(args: &[&str]) -> Vec<String> {
         args.iter().map(|s| (*s).to_owned()).collect()
+    }
+
+    /// The `law` form must work for an enacted year and label it as law.
+    #[test]
+    fn the_law_form_renders_an_enacted_year() {
+        let text = run_law(argv(&["--year", "2026"])).expect("succeeds");
+        assert!(text.contains("ENACTED LAW"));
+        assert!(text.contains("12.348,00"));
+    }
+
+    /// It must also work *past* the last enacted year — that is the whole point — and
+    /// must lead with the projection warning rather than burying it.
+    #[test]
+    fn the_law_form_projects_past_the_last_enacted_year() {
+        let text = run_law(argv(&["--year", "2060"])).expect("succeeds");
+        assert!(text.contains("PROJECTED"));
+        assert!(text.contains("NOT ENACTED LAW"));
+        // The Grundfreibetrag must have grown well past the enacted 12 348 EUR.
+        assert!(!text.contains("Grundfreibetrag                          12.348,00"));
+    }
+
+    /// The assumptions must be honoured, not merely accepted: a higher inflation
+    /// assumption must produce a visibly higher Grundfreibetrag.
+    #[test]
+    fn the_projection_assumptions_change_the_result() {
+        let low = run_law(argv(&["--year", "2050", "--inflation", "1,0"])).expect("a");
+        let high = run_law(argv(&["--year", "2050", "--inflation", "4,0"])).expect("b");
+        assert_ne!(low, high, "the inflation assumption had no effect");
+        assert!(low.contains("1,00 %"));
+        assert!(high.contains("4,00 %"));
+    }
+
+    /// A year past the coherence horizon must be refused with the reason, not returned.
+    #[test]
+    fn an_incoherent_horizon_is_refused_with_its_reason() {
+        let err = run_law(argv(&["--year", "2120"])).expect_err("refuses");
+        assert!(
+            err.contains("45 %"),
+            "the message should explain the tariff broke: {err}"
+        );
+    }
+
+    #[test]
+    fn the_law_form_requires_a_year() {
+        assert!(run_law(argv(&[])).is_err());
+        assert!(run_law(argv(&["--inflation", "2,0"])).is_err());
     }
 
     #[test]
@@ -184,15 +266,28 @@ mod tests {
         assert!(text.contains("Nettoentgelt"));
     }
 
-    /// An unsupported year must be refused with an explanation naming the range,
-    /// never answered with a nearby year's figures.
+    /// A year with no statutory data must be refused with an explanation, never
+    /// answered with a nearby year's figures.
+    ///
+    /// Since `TaxYear` was widened to make projection expressible, a future year is
+    /// now *representable* and is refused one step later — at the law lookup. Both
+    /// paths must still refuse, and say why.
     #[test]
-    fn an_unsupported_year_is_refused_with_an_explanation() {
-        let err = run(argv(&["--gross", "4500", "-c", "1", "-y", "2040"])).expect_err("refuses");
-        assert!(err.contains("2040"), "the message omits the year: {err}");
+    fn a_year_without_data_is_refused_with_an_explanation() {
+        // Before the first transcribed statute: refused at year construction.
+        let err = run(argv(&["--gross", "4500", "-c", "1", "-y", "2019"])).expect_err("refuses");
+        assert!(err.contains("2019"), "the message omits the year: {err}");
         assert!(
             err.contains("refuses"),
             "the message omits the reason: {err}"
+        );
+
+        // Beyond it: representable, but no Programmablaufplan to withhold under.
+        let err = run(argv(&["--gross", "4500", "-c", "1", "-y", "2040"])).expect_err("refuses");
+        assert!(err.contains("2040"), "the message omits the year: {err}");
+        assert!(
+            err.contains("Programmablaufplan"),
+            "the message should name what is missing: {err}"
         );
     }
 

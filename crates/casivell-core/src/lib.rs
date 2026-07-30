@@ -65,25 +65,69 @@ pub struct TaxYear(u16);
 
 impl TaxYear {
     /// Earliest year for which Casivell holds a verified parameter set.
-    pub const MIN: Self = Self(2025);
+    pub const FIRST_VERIFIED: Self = Self(2025);
 
     /// Latest year for which Casivell holds a verified parameter set.
     ///
-    /// Projections beyond this year must be explicitly flagged to the user as
-    /// extrapolated under an assumption, never presented as law.
-    pub const MAX: Self = Self(2026);
+    /// Beyond this year no statute has been transcribed. A projection may still be
+    /// computed — see `casivell-projection` — but it carries
+    /// [`crate::TaxYear::has_verified_data`] `== false` and every parameter set
+    /// derived for it is marked as projected rather than enacted.
+    pub const LAST_VERIFIED: Self = Self(2026);
 
-    /// Constructs a year, rejecting values outside the verified range.
+    /// Latest year the type will represent at all.
+    ///
+    /// A century past the last enacted statute: far enough for any household
+    /// projection, near enough that the compounding in
+    /// `casivell-projection` has a provable bound (JPL R2).
+    pub const LAST_REPRESENTABLE: Self = Self(2125);
+
+    /// Constructs a year.
+    ///
+    /// # Verified versus representable
+    ///
+    /// This accepts any year in `FIRST_VERIFIED..=LAST_REPRESENTABLE`, which is
+    /// deliberately wider than the range for which statute has been transcribed.
+    /// Being *representable* and having *verified data* are different properties, and
+    /// collapsing them into one made projection impossible: a 40-year forecast has to
+    /// name years no legislature has yet legislated for.
+    ///
+    /// The safety property is unchanged, because it lives where it belongs — on the
+    /// data lookup. [`casivell_lawdata::LawYear::for_year`] still refuses any year
+    /// past [`Self::LAST_VERIFIED`], so no caller can receive figures presented as
+    /// law that we cannot cite. Projected figures are obtainable only through an API
+    /// that requires explicit assumptions and marks its output accordingly.
+    ///
+    /// [`casivell_lawdata::LawYear::for_year`]: https://docs.rs/casivell-lawdata
     ///
     /// # Errors
     ///
-    /// Returns [`MoneyError::YearOutOfRange`] when no verified parameter set
-    /// exists, so that a caller cannot silently receive figures we cannot cite.
+    /// [`MoneyError::YearOutOfRange`] for a year before the first transcribed
+    /// statute or beyond [`Self::LAST_REPRESENTABLE`]. Years before
+    /// `FIRST_VERIFIED` are refused outright: there is no basis on which to
+    /// extrapolate *backwards* into law that once really existed and can simply be
+    /// transcribed instead.
     pub const fn new(year: u16) -> Result<Self, MoneyError> {
-        if year < Self::MIN.0 || year > Self::MAX.0 {
+        if year < Self::FIRST_VERIFIED.0 || year > Self::LAST_REPRESENTABLE.0 {
             return Err(MoneyError::YearOutOfRange { year });
         }
         Ok(Self(year))
+    }
+
+    /// Whether a transcribed, citable statute exists for this year.
+    ///
+    /// `false` means any parameters for the year are necessarily a projection.
+    #[must_use]
+    pub const fn has_verified_data(self) -> bool {
+        self.0 >= Self::FIRST_VERIFIED.0 && self.0 <= Self::LAST_VERIFIED.0
+    }
+
+    /// How many years separate this year from `other`, as a magnitude.
+    ///
+    /// Used by projection to bound its compounding loop.
+    #[must_use]
+    pub const fn years_from(self, other: Self) -> u32 {
+        self.0.abs_diff(other.0) as u32
     }
 
     /// Returns the year as a plain integer.

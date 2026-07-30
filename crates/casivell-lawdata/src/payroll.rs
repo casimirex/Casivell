@@ -234,7 +234,7 @@ const fn pct_milli(percent_millis: i64) -> Rate {
 const fn year(value: u16) -> TaxYear {
     match TaxYear::new(value) {
         Ok(y) => y,
-        Err(_) => TaxYear::MAX,
+        Err(_) => TaxYear::LAST_VERIFIED,
     }
 }
 

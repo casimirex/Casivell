@@ -11,6 +11,7 @@ use std::fmt;
 use casivell_core::{Money, Rate};
 use casivell_lawdata::{Bundesland, TaxClass};
 use casivell_payroll::PayPeriod;
+use casivell_projection::Assumptions;
 
 /// Anything wrong with the supplied arguments.
 #[derive(Debug)]
@@ -342,9 +343,45 @@ where
         .ok_or_else(bad)
 }
 
+/// Parses the arguments of the `law` form: a year and the projection assumptions.
+///
+/// # Errors
+///
+/// [`ArgError`] describing the first problem found.
+pub(crate) fn parse_law<I>(args: I) -> Result<(u16, Assumptions), ArgError>
+where
+    I: IntoIterator<Item = String>,
+{
+    let mut year: Option<u16> = None;
+    let mut inflation = Assumptions::DEFAULT_PRICE_INFLATION_PERCENT_MILLIS;
+    let mut wages = Assumptions::DEFAULT_WAGE_GROWTH_PERCENT_MILLIS;
+
+    let mut iter = args.into_iter();
+    while let Some(flag) = iter.next() {
+        match flag.as_str() {
+            "--year" | "-y" => year = Some(parse_u16(&flag, &mut iter)?),
+            "--inflation" => inflation = parse_percent_millis(&flag, &mut iter)?,
+            "--wage-growth" => wages = parse_percent_millis(&flag, &mut iter)?,
+            other => return Err(ArgError::Unknown(other.to_owned())),
+        }
+    }
+
+    let assumptions =
+        Assumptions::from_percent_millis(inflation, wages).map_err(|_| ArgError::BadValue {
+            flag: "--inflation/--wage-growth".to_owned(),
+            value: "out of range".to_owned(),
+            expected: "an annual rate within ±20 %".to_owned(),
+        })?;
+
+    Ok((
+        year.ok_or_else(|| ArgError::Required("--year".to_owned()))?,
+        assumptions,
+    ))
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{ArgError, Request, land_code, land_from_code};
+    use super::{ArgError, Request, land_code, land_from_code, parse_law};
     use casivell_lawdata::{Bundesland, TaxClass};
     use casivell_payroll::PayPeriod;
 
@@ -468,5 +505,58 @@ mod tests {
     fn state_codes_are_case_insensitive() {
         let r = parse(&["--gross", "1", "-c", "1", "-s", "sn"]).expect("parses");
         assert_eq!(r.land, Bundesland::Sachsen);
+    }
+
+    /// The law form needs a year and defaults its assumptions to the documented ones.
+    #[test]
+    fn the_law_form_defaults_its_assumptions() {
+        let (year, assumptions) =
+            parse_law(["--year".to_owned(), "2040".to_owned()]).expect("parses");
+        assert_eq!(year, 2040);
+        assert_eq!(assumptions, casivell_projection::Assumptions::default());
+    }
+
+    #[test]
+    fn the_law_form_accepts_explicit_assumptions() {
+        let (_, assumptions) = parse_law(
+            [
+                "--year",
+                "2040",
+                "--inflation",
+                "3,5",
+                "--wage-growth",
+                "4,0",
+            ]
+            .iter()
+            .map(|s| (*s).to_owned()),
+        )
+        .expect("parses");
+        assert_eq!(assumptions.price_inflation().ppm(), 35_000);
+        assert_eq!(assumptions.wage_growth().ppm(), 40_000);
+    }
+
+    #[test]
+    fn the_law_form_reports_a_missing_year_and_unknown_flags() {
+        assert!(matches!(
+            parse_law(core::iter::empty()),
+            Err(ArgError::Required(_))
+        ));
+        assert!(matches!(
+            parse_law(["--nonsense".to_owned()]),
+            Err(ArgError::Unknown(_))
+        ));
+    }
+
+    /// An implausible assumption must be refused rather than clamped.
+    #[test]
+    fn the_law_form_refuses_an_implausible_assumption() {
+        assert!(matches!(
+            parse_law(
+                ["--year", "2040", "--inflation", "500,0"]
+                    .iter()
+                    .map(|s| (*s).to_owned())
+            ),
+            Err(ArgError::BadValue { .. })
+        ));
     }
 }

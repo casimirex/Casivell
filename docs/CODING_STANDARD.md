@@ -228,6 +228,22 @@ status. There is no constructor that omits it.
 result, so a projection cannot present an extrapolation with the same authority as
 enacted law.
 
+**Transcription and derivation live in different crates.** `casivell-lawdata` holds
+figures read off a primary source; `casivell-projection` derives figures for years that
+have none. The boundary is load-bearing, not tidy: it is what lets a reviewer check the
+whole of `casivell-lawdata` against Gesetzestexte, with nothing computed mixed in.
+
+**Representable is not the same as verified.** `TaxYear` spans a century so a projection
+can name the years it needs; `TaxYear::has_verified_data` reports whether a statute
+exists. The guard sits on the *data lookup* — `LawYear::for_year` refuses any year it
+cannot cite — never on year construction. Conflating the two is what made projection
+impossible in the first place.
+
+**A projection must be impossible to obtain by accident.** Nothing past the last enacted
+year is reachable without passing `Assumptions`, and everything so obtained is marked
+`Projected` and says "NOT enacted law" in its `legal_basis` — because a reader may see
+that string without the `DataStatus` beside it.
+
 ### D4 — Name the rounding direction.
 
 The engine never applies `/` to a monetary quantity. It calls `div_floor`,
@@ -278,6 +294,18 @@ other `Euro` annotation rounds down. Implementing them all as truncation passed 
 the direction — and failed 56 of the 258 *allgemeine* values by one or two euro.
 Only having both tables located it. Reference values must be transcribed by hand from
 the primary document, and never regenerated from our own output.
+
+**Derivation beats transcription where a rule exists.** § 32a's coefficients are not
+free parameters — the marginal rate is pinned at each zone join, which determines all of
+them from the Eckwerte. Deriving them makes a *projected* tariff credible, and the
+derivation is validated by reproducing all eight published coefficients for both enacted
+years exactly.
+
+Precision decides whether that works. The dependent constants must be derived from the
+**unrounded** coefficients: rounding `c` from `173.1024` to the statute's `173.10` first
+shifts the 42 % subtrahend by seven cents and the reproduction fails. Finding the last
+three cents also located a real boundary — the 42 %/45 % lines cross at the *top of
+zone 4*, one euro below where zone 5 begins.
 
 **An independent implementation, for algebra the authority does not tabulate.**
 

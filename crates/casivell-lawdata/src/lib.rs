@@ -152,16 +152,16 @@ mod tests {
     use casivell_core::TaxYear;
 
     /// Every year in the declared support range must actually resolve. Without
-    /// this, widening `TaxYear::MAX` without adding data would fail at runtime
+    /// this, widening `TaxYear::LAST_VERIFIED` without adding data would fail at runtime
     /// instead of at `cargo test`.
     #[test]
     fn every_supported_year_resolves() {
-        let mut year = TaxYear::MIN.get();
-        while year <= TaxYear::MAX.get() {
+        let mut year = TaxYear::FIRST_VERIFIED.get();
+        while year <= TaxYear::LAST_VERIFIED.get() {
             let tax_year = TaxYear::new(year).expect("within the declared range");
             assert!(
                 LawYear::for_year(tax_year).is_ok(),
-                "TaxYear::MIN..=MAX claims {year} is supported but no data exists"
+                "TaxYear::FIRST_VERIFIED..=MAX claims {year} is supported but no data exists"
             );
             year = year.saturating_add(1);
         }
@@ -169,7 +169,44 @@ mod tests {
 
     #[test]
     fn unsupported_years_are_refused_rather_than_approximated() {
-        assert!(TaxYear::new(TaxYear::MIN.get().saturating_sub(1)).is_err());
-        assert!(TaxYear::new(TaxYear::MAX.get().saturating_add(1)).is_err());
+        // Before the first transcribed statute there is nothing to extrapolate from,
+        // so the year itself is refused.
+        assert!(TaxYear::new(TaxYear::FIRST_VERIFIED.get().saturating_sub(1)).is_err());
+
+        // *After* the last verified year the guard sits on the data lookup, not on
+        // year construction. The year is representable — a projection has to be able
+        // to name it — but `LawYear::for_year` still refuses to hand back figures it
+        // cannot cite. This is the invariant that matters, and it is the one thing
+        // `casivell-projection` must not be able to weaken.
+        let unverified = TaxYear::new(TaxYear::LAST_VERIFIED.get().saturating_add(1))
+            .expect("a year past the verified range is still representable");
+        assert!(!unverified.has_verified_data());
+        assert!(
+            LawYear::for_year(unverified).is_err(),
+            "enacted parameters must never be returned for an unverified year"
+        );
+    }
+
+    /// Every year the type will represent must either have verified data or report
+    /// that it does not. There is no third state, and nothing in between the two
+    /// bounds may be silently unbacked.
+    #[test]
+    fn verified_data_exists_for_exactly_the_years_that_claim_it() {
+        let mut year = TaxYear::FIRST_VERIFIED.get();
+        while year <= TaxYear::LAST_REPRESENTABLE.get() {
+            let tax_year = TaxYear::new(year).expect("representable");
+            assert_eq!(
+                tax_year.has_verified_data(),
+                LawYear::for_year(tax_year).is_ok(),
+                "{year}: has_verified_data disagrees with whether data resolves"
+            );
+            // Step coarsely once past the verified range; the interesting boundary is
+            // the first few years.
+            year = year.saturating_add(if year < TaxYear::LAST_VERIFIED.get() + 3 {
+                1
+            } else {
+                7
+            });
+        }
     }
 }

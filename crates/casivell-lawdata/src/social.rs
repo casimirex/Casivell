@@ -215,7 +215,7 @@ const fn pct_milli(percent_millis: i64) -> Rate {
 const fn year(value: u16) -> TaxYear {
     match TaxYear::new(value) {
         Ok(y) => y,
-        Err(_) => TaxYear::MIN,
+        Err(_) => TaxYear::FIRST_VERIFIED,
     }
 }
 
@@ -392,8 +392,8 @@ mod tests {
 
     #[test]
     fn every_supported_year_has_social_parameters() {
-        let mut y = TaxYear::MIN.get();
-        while y <= TaxYear::MAX.get() {
+        let mut y = TaxYear::FIRST_VERIFIED.get();
+        while y <= TaxYear::LAST_VERIFIED.get() {
             let tax_year = TaxYear::new(y).expect("in range");
             assert!(
                 SocialParameters::for_year(tax_year).is_ok(),

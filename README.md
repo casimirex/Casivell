@@ -10,9 +10,10 @@ can we afford a year off?*
 Your financial data stays on your device. There is no network code path below the
 UI layer.
 
-> **Status: early.** The calculation engine is built and tested, and there is a
-> working CLI. There is no graphical interface yet, and no multi-year projection —
-> see [ROADMAP.md](ROADMAP.md) for what exists and what comes next.
+> **Status: early.** The calculation engine is built and tested, statutory parameters
+> can be projected past the last enacted year, and there is a working CLI. There is no
+> graphical interface yet and no simulation kernel — see [ROADMAP.md](ROADMAP.md) for
+> what exists and what comes next.
 
 ---
 
@@ -43,6 +44,7 @@ crates/
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
 ├── casivell-social/    Social insurance contributions, pension entitlement
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
+├── casivell-projection/ Statutory parameters past the last enacted year
 └── casivell-cli/       The `casivell` command — the only crate that uses std
 ```
 
@@ -96,6 +98,29 @@ Casivell — Lohnabrechnung
 Every figure is traceable to the rule that produced it, and the report states its
 own assumptions and limits. `--help` lists the options.
 
+A forty-year projection has to name years no legislature has legislated for, so the
+statutory parameters can be projected — from explicit assumptions, and labelled:
+
+```sh
+cargo run -p casivell-cli -- law --year 2060
+```
+
+```
+Casivell — Rechengrößen 2060
+  ⚠  PROJECTED — NOT ENACTED LAW. No statute exists for 2060.
+     Extrapolated from 2026 at 2,00 % price inflation and 2,80 % wage growth.
+     Rates are held constant; the 45 % threshold is not indexed.
+
+  Einkommensteuertarif (§ 32a EStG)
+    Grundfreibetrag                          24.209,00 €
+    Beginn 42 % (Spitzensteuersatz)         137.013,00 €
+    Beginn 45 % (Reichensteuer)             277.826,00 €
+```
+
+That last pair is the model earning its keep: the 45 % threshold has not been indexed
+since 2007, so a projection shows it being overtaken. Push far enough and the tariff
+stops being well formed — which Casivell refuses rather than papering over.
+
 ---
 
 ## Build
@@ -104,7 +129,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 238 tests
+cargo test --workspace                                        # 291 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -166,6 +191,10 @@ The mechanisms that came out of it:
   engine's integer algebra. They share only the statutory coefficients.
 - Lohnsteuer is checked against the **516 official values** of the BMF's own
   Prüftabellen — the reference tables German payroll products are validated against.
+- Projected tariffs are derived rather than invented: § 32a's coefficients follow from
+  its Eckwerte, and the derivation reproduces **all eight published coefficients** for
+  both enacted years exactly. Nothing past the last statute can be obtained without
+  passing explicit assumptions, and everything so obtained reports itself as projected.
 - Where a result is knowably incomplete, the type says so:
   `ChurchTaxResult::base_is_exact` is `false` for households with children, because
   § 51a Abs. 2 EStG is not yet implemented.
