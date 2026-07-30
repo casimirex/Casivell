@@ -89,6 +89,18 @@ pub struct DeductionParameters {
     /// the Kindergeld received, so both are needed together.
     pub child_benefit_monthly: Money,
 
+    /// § 20 Abs. 9 EStG: the Sparer-Pauschbetrag, per person.
+    ///
+    /// Unchanged since 2023. Doubled for a joint assessment, and — unlike most allowances —
+    /// it is a *flat* exemption on capital income rather than a floor: capital income below it
+    /// is untaxed, and only the excess attracts the flat rate.
+    pub saver_allowance: Money,
+    /// § 32d Abs. 1 EStG: the Abgeltungsteuer rate on capital income, 25 %.
+    ///
+    /// A flat rate rather than the progressive tariff, which is why § 32d Abs. 6 exists: a
+    /// taxpayer whose marginal rate is below 25 % may elect the ordinary tariff instead.
+    pub capital_income_rate: Rate,
+
     /// Citation.
     pub provenance: Provenance,
 }
@@ -183,8 +195,11 @@ const DEDUCTIONS_2026: DeductionParameters = DeductionParameters {
     child_allowance_care: euro(2_928),
     child_benefit_monthly: euro(259),
 
+    saver_allowance: euro(1_000),
+    capital_income_rate: pct_milli(25_000),
+
     provenance: Provenance::new(
-        "§ 9a, § 10 Abs. 1 Nr. 2-3a, § 10 Abs. 3-4, § 10c, § 32 Abs. 6, § 66 EStG",
+        "§ 9a, § 10 Abs. 1 Nr. 2-3a, § 10 Abs. 3-4, § 10c, § 20 Abs. 9, § 32 Abs. 6, § 32d, § 66 EStG",
         "https://www.gesetze-im-internet.de/estg/__10.html",
         "2026-07-30",
         DataStatus::Enacted,
@@ -312,6 +327,31 @@ mod tests {
             DEDUCTIONS_2026.child_benefit_annual().expect("in domain"),
             Money::from_euro(259 * 12).expect("valid")
         );
+    }
+
+    /// § 20 Abs. 9 and § 32d Abs. 1: the Sparer-Pauschbetrag and the flat rate.
+    #[test]
+    fn the_capital_income_figures_match_the_statute() {
+        assert_eq!(
+            DEDUCTIONS_2026.saver_allowance,
+            Money::from_euro(1_000).expect("valid")
+        );
+        assert_eq!(
+            DEDUCTIONS_2026.capital_income_rate,
+            Rate::from_percent_millis(25_000).expect("valid")
+        );
+    }
+
+    /// The flat rate must sit strictly between the tariff's entry and top rates, or the
+    /// § 32d Abs. 6 election would never be worth making in one direction or the other.
+    #[test]
+    fn the_flat_rate_lies_inside_the_tariff_range() {
+        use crate::income_tax::IncomeTaxTariff;
+        let tariff = IncomeTaxTariff::for_year(TaxYear::new(2026).unwrap()).expect("enacted");
+        let flat = DEDUCTIONS_2026.capital_income_rate.ppm();
+        // Above the 14 % Eingangssteuersatz and below the 42 % Spitzensteuersatz.
+        assert!(flat > 140_000);
+        assert!(flat < tariff.upper_proportional.marginal_rate.ppm());
     }
 
     #[test]

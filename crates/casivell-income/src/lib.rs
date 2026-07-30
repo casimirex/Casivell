@@ -43,8 +43,9 @@
 //!
 //! An employee with employment income only. Deliberately absent:
 //!
-//! - The other six income categories of § 2 Abs. 1: capital, rental, business,
-//!   self-employment, agriculture, and other income. Each brings its own rules.
+//! - Rental, business, self-employment, agriculture and other income — five of the seven
+//!   categories of § 2 Abs. 1. **Capital income is covered**, in [`capital`], because it does
+//!   not run through the tariff at all and so is separable from the rest.
 //! - **Außergewöhnliche Belastungen** (§§ 33–33b): medical costs, disability, care. These
 //!   need a *zumutbare Belastung* computed from income, and the data to test it is not
 //!   available.
@@ -67,9 +68,11 @@
 )]
 
 pub mod assessment;
+pub mod capital;
 pub mod taxable_income;
 pub mod vorsorge;
 
 pub use assessment::{Assessment, ChildRelief, assess};
+pub use capital::{CapitalIncomeTax, CapitalRoute, capital_income_tax};
 pub use taxable_income::{Employee, TaxableIncome, taxable_income};
 pub use vorsorge::{Vorsorgeaufwendungen, vorsorgeaufwendungen};
