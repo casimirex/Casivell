@@ -14,6 +14,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "casivell-payroll"
+version = "0.1.0"
+dependencies = [
+ "casivell-core",
+ "casivell-lawdata",
+ "casivell-social",
+ "casivell-tax",
+]
+
+[[package]]
 name = "casivell-social"
 version = "0.1.0"
 dependencies = [

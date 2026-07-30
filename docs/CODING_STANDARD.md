@@ -63,7 +63,7 @@ beyond ±10 billion euro on construction, so downstream code may assume it.
 
 Allocation introduces failure modes and latency that are hard to bound.
 
-**Enforced structurally:** all three engine crates are `#![no_std]`. There is no
+**Enforced structurally:** every engine crate is `#![no_std]`. There is no
 allocator, so the engine *cannot* heap-allocate. This is the strongest form of
 enforcement available — not a lint that can be silenced but an absence of
 capability.
@@ -140,6 +140,10 @@ operation and asserts none panics. That is what lets the release profile set
 test, a failed constructor on a hard-coded literal *is* the failure being reported,
 and threading `Result` through assertions buries the property under plumbing. The
 exemption is `cfg(test)`, so nothing shipped is covered by it.
+
+Integration tests under `tests/` are separate crates, so the library root's
+`cfg_attr` does not reach them. Each needs its own `#![allow(...)]` header with the
+same reasoning stated.
 
 ---
 
@@ -227,8 +231,13 @@ enacted law.
 ### D4 — Name the rounding direction.
 
 The engine never applies `/` to a monetary quantity. It calls `div_floor`,
-`div_trunc` or `div_round_half_up` and cites the provision requiring it. The three
-disagree for negative operands, and a bare `/` does not say which was meant.
+`div_ceil`, `div_trunc` or `div_round_half_up` and cites the provision requiring it.
+They disagree for negative operands, and a bare `/` does not say which was meant.
+
+`div_ceil` exists because the BMF Programmablaufplan needs it: two Vorsorgepauschale
+boxes are annotated `Euro↑` while every other rounding in the same document goes
+down. Having all four directions available *by name* is what made that difference
+expressible rather than something to approximate.
 
 ### D5 — Prefer property tests over point values; state the precondition.
 
@@ -252,7 +261,25 @@ assessment is in zone 5 while the half is in zone 4 — the affine identity need
 both in the *same* zone. The fixed test asserts the zone of each, so it fails
 loudly rather than silently becoming vacuous if the Eckwerte move.
 
-### D6 — Cross-check against an independent implementation.
+### D6 — Cross-check against an independent implementation, and against the authority.
+
+Two distinct things, both required.
+
+**The authority's own reference values, where they exist.** The BMF publishes
+Prüftabellen with the Programmablaufplan: 516 values of annual Lohnsteuer across
+43 salary levels and six tax classes. `casivell-payroll` is checked against all of
+them. This is the strongest verification available — not "consistent with our reading
+of the statute" but agreeing with the tax authority's arithmetic.
+
+It also earns its keep. The PAP annotates each rounding step with an arrow, and the
+directions are **not uniform**: two Vorsorgepauschale boxes round *up* while every
+other `Euro` annotation rounds down. Implementing them all as truncation passed the
+*besondere* table — where the Vorsorgepauschale lands on a whole euro anyway, hiding
+the direction — and failed 56 of the 258 *allgemeine* values by one or two euro.
+Only having both tables located it. Reference values must be transcribed by hand from
+the primary document, and never regenerated from our own output.
+
+**An independent implementation, for algebra the authority does not tabulate.**
 
 `docs/reference/generate_tariff_reference.py` evaluates § 32a with
 arbitrary-precision decimals, transcribing each zone as printed. The engine clears

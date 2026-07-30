@@ -53,7 +53,7 @@ pub mod rounding;
 
 pub use money::{Money, MoneyError};
 pub use rate::Rate;
-pub use rounding::{Rounding, div_floor, div_round_half_up, div_trunc};
+pub use rounding::{Rounding, div_ceil, div_floor, div_round_half_up, div_trunc};
 
 /// The calendar year a statutory parameter set applies to.
 ///

@@ -53,12 +53,14 @@
 )]
 
 pub mod income_tax;
+pub mod payroll;
 pub mod provenance;
 pub mod retirement;
 pub mod social;
 pub mod surcharges;
 
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
+pub use payroll::{PayrollParameters, TaxClass};
 pub use provenance::{DataStatus, Provenance};
 pub use retirement::{MONTHS_PER_YEAR, RetirementParameters, retirement_age_months};
 pub use social::{

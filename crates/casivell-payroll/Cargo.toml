@@ -1,0 +1,17 @@
+[package]
+name = "casivell-payroll"
+version = "0.1.0"
+description = "German Lohnsteuer withholding per the BMF Programmablaufplan, and net pay composition."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+casivell-core = { path = "../casivell-core" }
+casivell-lawdata = { path = "../casivell-lawdata" }
+casivell-social = { path = "../casivell-social" }
+casivell-tax = { path = "../casivell-tax" }
+
+[lints]
+workspace = true

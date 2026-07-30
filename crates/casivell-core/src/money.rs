@@ -288,6 +288,25 @@ impl Money {
         Self::from_euro(euro)
     }
 
+    /// Rounds up to a whole euro amount.
+    ///
+    /// This is *aufrunden auf einen vollen Euro-Betrag*. The BMF
+    /// Programmablaufplan requires it for the Vorsorgepauschale — see
+    /// [`Rounding::Ceiling`] — while requiring truncation almost everywhere else,
+    /// so the two directions are named separately rather than being a parameter
+    /// a caller might supply by accident.
+    ///
+    /// # Errors
+    ///
+    /// [`MoneyError::Overflow`] on a non-representable result.
+    pub const fn ceil_to_euro(self) -> Result<Self, MoneyError> {
+        let euro = match div(self.cents, Self::CENTS_PER_EURO, Rounding::Ceiling) {
+            Ok(v) => v,
+            Err(e) => return Err(e),
+        };
+        Self::from_euro(euro)
+    }
+
     /// Returns the amount as whole euro, truncated toward negative infinity.
     ///
     /// # Errors
@@ -359,6 +378,16 @@ const fn narrow_i128_div(n: i128, d: i128, mode: Rounding) -> Result<i64, MoneyE
         Rounding::Floor => {
             if r != 0 && ((r < 0) != (d < 0)) {
                 match q.checked_sub(1) {
+                    Some(v) => v,
+                    None => return Err(MoneyError::Overflow),
+                }
+            } else {
+                q
+            }
+        }
+        Rounding::Ceiling => {
+            if r != 0 && ((r < 0) == (d < 0)) {
+                match q.checked_add(1) {
                     Some(v) => v,
                     None => return Err(MoneyError::Overflow),
                 }

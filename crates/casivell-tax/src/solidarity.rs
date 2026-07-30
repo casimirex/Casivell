@@ -46,13 +46,17 @@ pub struct SurchargeResult {
 ///
 /// # Rounding
 ///
-/// The surcharge is computed to the cent, truncating. Unlike § 32a — which states
-/// its rounding rule explicitly — SolzG does not prescribe a rounding direction
-/// for the surcharge itself, and the Lohnsteuer Programmablaufplan and the annual
-/// assessment do not obviously agree. Truncation is the conservative reading and
-/// matches the PAP's general treatment of surcharges. **This is an open item**:
-/// it must be confirmed against BMF reference cases before any figure is
-/// presented as exact. The error is bounded by one cent.
+/// The surcharge is computed to the cent, truncating.
+///
+/// SolzG does not itself prescribe a direction, so this was previously recorded as
+/// an open item. It is now settled for the withholding path: the `MSOLZ` routine of
+/// the BMF Programmablaufplan 2026 annotates `SOLZJ = JBMG · 5,5/100` with `Cent↓`,
+/// i.e. truncation, and `casivell-payroll` follows it. Truncation here keeps the
+/// annual assessment consistent with withholding.
+///
+/// One residual caveat: the PAP governs *withholding*, and its rounding is
+/// authoritative for that. Whether the annual assessment truncates identically has
+/// not been confirmed against a Steuerbescheid. The exposure is one cent.
 ///
 /// # Errors
 ///

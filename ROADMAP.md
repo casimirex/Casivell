@@ -59,8 +59,9 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-lawdata` | Year-keyed statutory tables for 2025 and 2026, each with a `Provenance`. Income tax tariff, pension, unemployment, health, care, Soli, church tax, retirement ages, all 16 Bundesländer. |
 | `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. |
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
+| `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; gross-to-net. |
 
-**159 tests pass.** The engine builds for `wasm32-unknown-unknown` and has zero
+**208 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -73,21 +74,33 @@ Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.
 [SolzG 1995](https://www.gesetze-im-internet.de/solzg_1995/__3.html), and the
 [DRV pension adjustment announcement](https://www.deutsche-rentenversicherung.de/DRV/DE/Ueber-uns-und-Presse/Presse/Meldungen/2026/260305-rentenanpassung-2026).
 
-Two figures are checkable against externally published results and match exactly:
-the DRV "Standardrentner" pension of **1 913,40 €** from 1 July 2026 (45 points ×
-42,52 €), and the announced **77,85 €** monthly increase at that adjustment.
+### External verification
+
+Three independent checks against figures Casivell did not derive:
+
+- **The BMF Prüftabellen.** Pages 39–40 of the PAP publish annual Lohnsteuer for 43
+  salary levels across all six tax classes, in two variants — 516 values. Every one
+  matches exactly. These are the reference values German payroll products are
+  checked against.
+- **The DRV "Standardrentner".** 45 Entgeltpunkte at the 1 July 2026 Rentenwert give
+  **1 913,40 €**, and the announced increase at that adjustment was **77,85 €**. Both
+  match.
+- **An independent decimal implementation** of § 32a in `docs/reference/`, agreeing
+  with the engine's integer algebra across the whole curve.
 
 ### Known gaps, recorded rather than hidden
 
 | Gap | Effect | Where recorded |
 |---|---|---|
-| zvE determination | **Not implemented at all** — the tariff takes an already-determined taxable income | `casivell-tax` crate docs |
-| Lohnsteuer (payroll withholding) | No gross→net yet; needs the BMF Programmablaufplan and its Vorsorgepauschale | `casivell-social` crate docs |
-| § 51a Abs. 2 EStG church tax base | Church tax **overstated for families** | `ChurchTaxResult::base_is_exact` |
+| zvE determination | **Not implemented at all** — the annual tariff takes an already-determined taxable income | `casivell-tax` crate docs |
+| Weekly / daily pay periods | Refused, not approximated: `LZZ = 3` and `4` scale by 360/7 and 1/360, which do not terminate in decimal | `casivell-payroll` crate docs |
+| Sonstige Bezüge | A thirteenth month or bonus follows § 39b Abs. 3, a separate calculation | `casivell-payroll` crate docs |
+| Versorgungsbezüge, Altersentlastungsbetrag | Pensions run through payroll are not modelled | `casivell-payroll` crate docs |
+| Faktorverfahren | The alternative to classes III/V for couples | `casivell-payroll` crate docs |
+| § 51a Abs. 2 church tax base | Correct in the **withholding** path; still overstated for families in the **annual assessment** | `ChurchTaxResult::base_is_exact` |
 | Kirchensteuer-Kappung | Overstated at high incomes | `ChurchTaxParameters` docs |
-| Soli rounding direction | Up to 1 cent | `solidarity_surcharge` docs |
 | Minijob / Übergangsbereich | Contributions are wrong below the Midijob threshold | `casivell-social` crate docs |
-| PKV | Only statutory health insurance is modelled; no GKV/PKV comparison | this table |
+| PKV comparison | Private cover is modelled for the Vorsorgepauschale, but there is no GKV/PKV cost comparison | this table |
 | Current-year Durchschnittsentgelt | Provisional by statute, so current-year points shift when the final figure lands | `EntgeltPoints::accrued_in_year` |
 
 The zvE gap is the largest. Deductions, Werbungskosten, Sonderausgaben and
@@ -155,7 +168,7 @@ optimistic by roughly 3–4×; these estimates assume things go wrong.
 
 ### Phase 0 — Foundation ✅ *complete*
 
-Money/rate primitives, cited law tables for 2025–26, § 32a tariff, Soli, church
+Money/rate primitives, cited law tables, § 32a tariff, Soli, church
 tax, coding standard, CI.
 
 ### Phase 1 — Social insurance and net income · *in progress*
@@ -170,22 +183,24 @@ tax, coding standard, CI.
       childless care surcharge, the per-child care reductions that reduce only the
       employee's share, and the Saxon 0.5-point shift. Fund-specific Zusatzbeitrag
       overrides the published average.
-- [ ] **`casivell-net`: gross → net.** Blocked on the item below — see the note.
-- [ ] **Lohnsteuer via the BMF Programmablaufplan**, including the
-      Vorsorgepauschale of § 39b Abs. 2 Satz 5 Nr. 3 EStG.
-- [ ] PKV, and the GKV/PKV comparison.
+- [x] **Lohnsteuer via the BMF Programmablaufplan 2026.** All six tax classes; the
+      full Vorsorgepauschale of § 39b Abs. 2 Satz 5 Nr. 3 (pension, health, care,
+      unemployment, and the 1 900 € cap taken as a maximum against the uncapped
+      variant); the § 39b Abs. 2 Satz 7 formula for classes V and VI; statutory and
+      private health cover; the Solidaritätszuschlag with its `KZTAB`-scaled
+      Freigrenze; and the § 51a base with Kinderfreibeträge.
+- [x] **`casivell-payroll`: gross → net**, composing withholding with contributions
+      from one shared profile, so the two halves cannot describe different people.
+- [x] **Verified against the PAP's own Prüftabellen** — 516 official values, all
+      matching.
+- [ ] PKV cost comparison against GKV.
 - [ ] Minijob and the Übergangsbereich sliding scale.
+- [ ] Sonstige Bezüge (§ 39b Abs. 3): a thirteenth month or bonus.
+- [ ] Weekly and daily pay periods, which need a finer scale than cents.
 
-**Why gross→net is not done yet.** It needs *Lohnsteuer*, and Lohnsteuer is not the
-annual assessment already in `casivell-tax`: it is the BMF Programmablaufplan, a
-separate algorithm with its own allowances, its own Vorsorgepauschale, and its own
-rounding. Approximating it — say, by annualising and applying § 32a — would produce
-a monthly net figure wrong by tens of euros while looking authoritative. That is
-precisely the failure documented in `docs/ROADMAP_ERRATA.md`, so the PAP gets its
-own increment rather than a shortcut.
-
-**Done when:** gross-to-net matches a published Brutto-Netto-Rechner to the cent
-for a documented matrix of cases.
+**Done when:** ~~gross-to-net matches a published Brutto-Netto-Rechner~~ — replaced
+by a stronger criterion, now met: agreement with the BMF's own published reference
+tables rather than with a third-party calculator.
 
 ### Phase 2 — Taxable income determination · ~4 weeks
 

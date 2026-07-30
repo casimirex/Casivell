@@ -23,6 +23,14 @@ pub enum Rounding {
     Floor,
     /// Toward zero. `-7 / 2 == -3`. Rust's native `/`.
     TowardZero,
+    /// Toward positive infinity. `-7 / 2 == -3`, `7 / 2 == 4`.
+    ///
+    /// This is *aufrunden*. The BMF Programmablaufplan needs it: the
+    /// Vorsorgepauschale boxes `VSP = VSPKVPV + VSPR` and `VSPN = VSPR + VSPHB`
+    /// are annotated `Euro↑`, while every other `Euro` annotation in the same
+    /// document points down. Rounding those two the wrong way puts the annual
+    /// Lohnsteuer out by a euro or two across most of the income range.
+    Ceiling,
     /// Nearest, ties away from zero. `-7 / 2 == -4`, `7 / 2 == 4`.
     ///
     /// Commercial rounding, used where a statute says "kaufmännisch gerundet".
@@ -44,6 +52,27 @@ pub const fn div_floor(n: i64, d: i64) -> Result<i64, MoneyError> {
     // rounded up; step down one to reach the floor.
     if r != 0 && ((r < 0) != (d < 0)) {
         return match q.checked_sub(1) {
+            Some(v) => Ok(v),
+            None => Err(MoneyError::Overflow),
+        };
+    }
+    Ok(q)
+}
+
+/// Divides `n` by `d`, rounding toward positive infinity.
+///
+/// # Errors
+///
+/// As [`div_floor`].
+pub const fn div_ceil(n: i64, d: i64) -> Result<i64, MoneyError> {
+    let (q, r) = match quotient_and_remainder(n, d) {
+        Ok(parts) => parts,
+        Err(e) => return Err(e),
+    };
+    // A non-zero remainder sharing the divisor's sign means the exact quotient lies
+    // above the truncated one; step up to reach the ceiling.
+    if r != 0 && ((r < 0) == (d < 0)) {
+        return match q.checked_add(1) {
             Some(v) => Ok(v),
             None => Err(MoneyError::Overflow),
         };
@@ -101,6 +130,7 @@ pub const fn div_round_half_up(n: i64, d: i64) -> Result<i64, MoneyError> {
 pub const fn div(n: i64, d: i64, mode: Rounding) -> Result<i64, MoneyError> {
     match mode {
         Rounding::Floor => div_floor(n, d),
+        Rounding::Ceiling => div_ceil(n, d),
         Rounding::TowardZero => div_trunc(n, d),
         Rounding::HalfUp => div_round_half_up(n, d),
     }
@@ -120,7 +150,7 @@ const fn quotient_and_remainder(n: i64, d: i64) -> Result<(i64, i64), MoneyError
 
 #[cfg(test)]
 mod tests {
-    use super::{Rounding, div, div_floor, div_round_half_up, div_trunc};
+    use super::{Rounding, div, div_ceil, div_floor, div_round_half_up, div_trunc};
     use crate::money::MoneyError;
 
     #[test]
@@ -163,10 +193,41 @@ mod tests {
     }
 
     #[test]
+    fn ceiling_rounds_toward_positive_infinity() {
+        assert_eq!(div_ceil(7, 2), Ok(4));
+        assert_eq!(div_ceil(-7, 2), Ok(-3));
+        assert_eq!(div_ceil(7, -2), Ok(-3));
+        assert_eq!(div_ceil(-7, -2), Ok(4));
+        assert_eq!(div_ceil(8, 2), Ok(4));
+        assert_eq!(div_ceil(-8, 2), Ok(-4));
+    }
+
+    /// Flooring and ceiling must bracket the exact quotient and differ by exactly
+    /// one whenever the division is inexact. This is the property the PAP relies on
+    /// when it uses both directions in the same algorithm.
+    #[test]
+    fn floor_and_ceiling_bracket_the_exact_quotient() {
+        for n in -60_i64..=60 {
+            for d in [-5_i64, -2, -1, 1, 2, 5] {
+                let (Ok(f), Ok(c)) = (div_floor(n, d), div_ceil(n, d)) else {
+                    continue;
+                };
+                let inexact = n % d != 0;
+                if inexact {
+                    assert_eq!(c, f + 1, "{n}/{d}: floor {f} and ceiling {c}");
+                } else {
+                    assert_eq!(c, f, "{n}/{d} is exact but floor and ceiling differ");
+                }
+            }
+        }
+    }
+
+    #[test]
     fn dispatch_matches_the_direct_calls() {
         for n in -20_i64..=20 {
             for d in [-7_i64, -3, -1, 1, 3, 7] {
                 assert_eq!(div(n, d, Rounding::Floor), div_floor(n, d));
+                assert_eq!(div(n, d, Rounding::Ceiling), div_ceil(n, d));
                 assert_eq!(div(n, d, Rounding::TowardZero), div_trunc(n, d));
                 assert_eq!(div(n, d, Rounding::HalfUp), div_round_half_up(n, d));
             }
@@ -181,6 +242,7 @@ mod tests {
             for q in -50_i64..=50 {
                 let n = q * d;
                 assert_eq!(div_floor(n, d), Ok(q), "floor {n}/{d}");
+                assert_eq!(div_ceil(n, d), Ok(q), "ceiling {n}/{d}");
                 assert_eq!(div_trunc(n, d), Ok(q), "trunc {n}/{d}");
                 assert_eq!(div_round_half_up(n, d), Ok(q), "half-up {n}/{d}");
             }

@@ -16,6 +16,8 @@ doc-valid-idents = [
     "StBerG", "RDG", "DDG", "GrEStG",
     # Institutions
     "BMF", "BMAS", "BMG", "BMBF", "DRV",
+    # Administrative systems and procedures
+    "ELStAM", "KZTAB", "STKL",
     # Domain terms with internal capitals
     "zvE", "GKV", "PKV", "JAEG", "PAP", "ALG", "WEG",
     # Technical terms

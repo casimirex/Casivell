@@ -41,14 +41,15 @@ crates/
 ├── casivell-core/      Money (integer cents), Rate (integer ppm), named rounding
 ├── casivell-lawdata/   Year-keyed statutory tables, every figure cited
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
-└── casivell-social/    Social insurance contributions, pension entitlement
+├── casivell-social/    Social insurance contributions, pension entitlement
+└── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ```
 
 The dependency direction is the design: `core` knows nothing of German law;
 `lawdata` holds law but performs no calculation; calculation crates hold no
 statutory constants. Each layer can be reviewed on its own.
 
-All four are `#![no_std]` and `#![forbid(unsafe_code)]`. Zero third-party
+All five are `#![no_std]` and `#![forbid(unsafe_code)]`. Zero third-party
 dependencies.
 
 ---
@@ -59,7 +60,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 159 tests
+cargo test --workspace                                        # 208 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -119,6 +120,8 @@ The mechanisms that came out of it:
   to any figure copied from the same place the data came from.
 - An independent decimal implementation in `docs/reference/` cross-checks the
   engine's integer algebra. They share only the statutory coefficients.
+- Lohnsteuer is checked against the **516 official values** of the BMF's own
+  Prüftabellen — the reference tables German payroll products are validated against.
 - Where a result is knowably incomplete, the type says so:
   `ChurchTaxResult::base_is_exact` is `false` for households with children, because
   § 51a Abs. 2 EStG is not yet implemented.
