@@ -6,6 +6,7 @@ use casivell_payroll::{NetPay, PayPeriod, PayrollLaw, net_pay};
 use casivell_projection::{Assumptions, ProjectionError, project_payroll, resolve};
 use casivell_social::EntgeltPoints;
 
+use crate::events::MonthInputs;
 use crate::household::{Household, SimulationConfig};
 
 /// Months in a year. Named so the constant never appears bare.
@@ -133,6 +134,13 @@ pub struct MonthSnapshot {
     /// What reaches the household.
     pub net: Money,
 
+    /// Non-employment income received this month, from a scheduled event.
+    ///
+    /// Attracts no contributions and earns no Entgeltpunkte, and is reported separately so it
+    /// cannot be mistaken for salary.
+    pub other_income: Money,
+    /// A one-off cost or windfall applied to wealth this month. Negative is a cost.
+    pub one_off: Money,
     /// Expenses for the month.
     pub expenses: Money,
     /// Net less expenses. Negative when the household is drawing down.
@@ -158,6 +166,14 @@ pub struct MonthSnapshot {
     pub law_status: DataStatus,
     /// Which basis the amounts above are expressed in.
     pub basis: Basis,
+
+    /// Whether employment income was interrupted this month by a scheduled event.
+    ///
+    /// Reported so a chart can shade the period rather than leaving a reader to infer it from
+    /// a zero, which a zero-income month at the start of a projection would also produce.
+    pub employment_interrupted: bool,
+    /// Whether working hours were reduced this month.
+    pub working_time_reduced: bool,
 }
 
 /// Receives each month as the kernel produces it.
@@ -297,16 +313,30 @@ pub fn simulate<S: Sink>(
             state.contributory_this_year = Money::ZERO;
         }
 
-        let pay = net_pay(
-            state.monthly_gross,
-            PayPeriod::Month,
-            &household.employment,
-            law,
-        )
-        .map_err(SimulationError::Arithmetic)?;
+        // A permanent change rebases the baseline, so the household's own growth compounds
+        // from the new figure rather than being overtaken by it. Adopted after this year's
+        // growth, so a promotion landing on an anniversary is not immediately inflated.
+        let rebase = household.schedule.rebase_at(month_index);
+        if let Some(gross) = rebase.gross {
+            state.monthly_gross = gross;
+        }
+        if let Some(expenses) = rebase.expenses {
+            state.monthly_expenses = expenses;
+        }
+
+        // Transient modifiers then adjust the month. Events change inputs only: tax and
+        // contributions still follow from the resulting gross through the same verified code
+        // that produces a payslip, so an event cannot invent a tax rule.
+        let inputs = household
+            .schedule
+            .resolve(month_index, state.monthly_gross, state.monthly_expenses)
+            .map_err(SimulationError::Arithmetic)?;
+
+        let pay = net_pay(inputs.gross, PayPeriod::Month, &household.employment, law)
+            .map_err(SimulationError::Arithmetic)?;
 
         accrue_pension(&mut state, &pay, law)?;
-        let (investment_return, savings) = advance_wealth(&mut state, &pay, config)?;
+        let (investment_return, savings) = advance_wealth(&mut state, &pay, &inputs, config)?;
 
         let snapshot = build_snapshot(
             month_index,
@@ -314,11 +344,11 @@ pub fn simulate<S: Sink>(
             month,
             &pay,
             &state,
+            &inputs,
             investment_return,
             savings,
             law,
             config,
-            household,
         )?;
 
         if !sink.accept(&snapshot) {
@@ -426,6 +456,7 @@ fn accrue_pension(
 fn advance_wealth(
     state: &mut State,
     pay: &NetPay,
+    inputs: &MonthInputs,
     config: &SimulationConfig,
 ) -> Result<(Money, Money), SimulationError> {
     let monthly_return = monthly_rate(config.investment_return)?;
@@ -433,14 +464,18 @@ fn advance_wealth(
         .wealth
         .mul_rate(monthly_return, Rounding::HalfUp)
         .map_err(SimulationError::Arithmetic)?;
+    // Non-employment income adds to what is available to save; a one-off is applied to
+    // wealth directly, so it is deliberately outside `savings`.
     let savings = pay
         .net
-        .sub(state.monthly_expenses)
+        .add(inputs.other_income)
+        .and_then(|available| available.sub(inputs.expenses))
         .map_err(SimulationError::Arithmetic)?;
     state.wealth = state
         .wealth
         .add(investment_return)
         .and_then(|w| w.add(savings))
+        .and_then(|w| w.add(inputs.one_off))
         .map_err(SimulationError::Arithmetic)?;
     Ok((investment_return, savings))
 }
@@ -457,11 +492,11 @@ fn build_snapshot(
     month: u8,
     pay: &NetPay,
     state: &State,
+    inputs: &MonthInputs,
     investment_return: Money,
     savings: Money,
     law: &PayrollLaw,
     config: &SimulationConfig,
-    household: &Household,
 ) -> Result<MonthSnapshot, SimulationError> {
     let pension_value = law
         .social
@@ -489,19 +524,23 @@ fn build_snapshot(
         church_tax: deflate(pay.church_tax)?,
         employee_contributions: deflate(pay.employee_contributions)?,
         net: deflate(pay.net)?,
-        expenses: deflate(state.monthly_expenses)?,
+        other_income: deflate(inputs.other_income)?,
+        one_off: deflate(inputs.one_off)?,
+        expenses: deflate(inputs.expenses)?,
         savings: deflate(savings)?,
         investment_return: deflate(investment_return)?,
         wealth: deflate(state.wealth)?,
         pension_points: state.pension_points,
         accrued_pension: deflate(accrued_pension)?,
-        law_status: statutory_status(law, household),
+        law_status: statutory_status(law),
         basis: config.basis,
+        employment_interrupted: inputs.employment_interrupted,
+        working_time_reduced: inputs.working_time_reduced,
     })
 }
 
 /// The weakest status among the parameter sets actually used.
-fn statutory_status(law: &PayrollLaw, _household: &Household) -> DataStatus {
+fn statutory_status(law: &PayrollLaw) -> DataStatus {
     law.payroll
         .provenance
         .status

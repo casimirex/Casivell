@@ -62,10 +62,10 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
 | `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; net pay for a month or a year. |
 | `casivell-projection` | Statutory parameters past the last enacted year, derived from explicit assumptions and marked `Projected`. |
-| `casivell-sim` | Month-by-month household projection over decades. `#![no_std]` and streaming: one month held at a time. |
+| `casivell-sim` | Month-by-month household projection over decades, with life events. `#![no_std]` and streaming: one month held at a time. |
 | `casivell-cli` | The `casivell` command: a payslip, the parameters for any year, and a household projection. The only crate using `std`. |
 
-**398 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
+**426 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -365,11 +365,41 @@ with nothing behind it. The PAP's *structure* is still not projected — only it
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
-### Phase 6 — Life events · ~6 weeks
+### Phase 6 — Life events · *in progress*
 
-Elterngeld (all three defects in the old sketch corrected), Kita costs, buy vs.
-rent incl. Grunderwerbsteuer by state, part-time and the Teilzeitfalle, job change
-and ALG I, early retirement deductions.
+- [x] **The event architecture.** A bounded `Schedule` of events, resolved per month. Every
+      life event has the same shape — *from month N, something is different* — so one
+      mechanism serves all of them and the thirteenth is cheap.
+- [x] **Part-time work** (the Teilzeitfalle), **unpaid career breaks**, **promotions**,
+      **expense changes**, **one-off costs**, and **non-employment income**.
+- [x] Exposed through the CLI: `--part-time 3:8:60`, `--break 5:6`, `--raise 15:8000`,
+      `--one-off 5:-60000`.
+- [ ] **Elterngeld.** Blocked, and deliberately: doing it correctly needs the
+      Progressionsvorbehalt of § 32b EStG — Elterngeld is tax-free but raises the rate on
+      everything else — which needs the annual assessment inside the kernel rather than
+      monthly withholding. Adding the payment without the rate effect would understate every
+      family's tax. `Event::OtherIncome` takes a known net amount meanwhile.
+- [ ] Kita costs, which are municipal rather than statutory and have no national table.
+- [ ] Buy versus rent: needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
+      amortisation. The deposit and the payment can be modelled today with `--one-off` and an
+      expense change, which is not the same thing.
+- [ ] Job change with ALG I, early retirement deductions, moving abroad.
+
+**Two of the three questions on the front page are now answerable**, and the third is not.
+*"What does part-time really cost?"* and *"Can we afford a year off?"* run end to end;
+*"Should we buy or keep renting?"* needs the property model above.
+
+**A design bug the tests caught.** `PayChange` was first implemented as a transient override
+holding a fixed amount, while the household's own growth kept compounding behind it. After
+about twenty years at 2.8 % the growing baseline overtook the "promotion" and it quietly
+became a pay cut. Permanent changes now *rebase* the baseline so growth compounds from the
+new figure; transient modifiers leave it alone. **No unit test would have found this** — it
+took a forty-year integration test asserting that a promotion leaves the household better off.
+
+**A finding, and its encouraging half.** Ten years at 60 % costs about four Entgeltpunkte
+permanently, because a reduced year is permanently a reduced year. But a large enough later
+promotion *can* more than repair the record, since points accrue faster on a higher salary.
+Both are pinned as tests.
 
 ### Phase 7 — Launch readiness · ~3 weeks
 

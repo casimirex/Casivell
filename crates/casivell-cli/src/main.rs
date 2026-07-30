@@ -77,6 +77,10 @@ OPTIONS
 
 PROJECT OPTIONS
       --expenses <amount> Monthly expenses (required)
+      --part-time <spec>  FROM:UNTIL:PERCENT in years, e.g. 3:8:60
+      --break <spec>      Unpaid leave, FROM:UNTIL in years, e.g. 5:6
+      --raise <spec>      YEAR:AMOUNT, e.g. 15:8000
+      --one-off <spec>    YEAR:AMOUNT, e.g. 5:-60000 for a deposit
       --years <n>         Horizon in years (default 40, max 70)
       --real              Show figures in today's purchasing power
       --pay-growth <p>    Annual growth in this household's pay (default 0,0)
@@ -93,6 +97,8 @@ EXAMPLES
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
   casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
+  casivell project --gross 4500 --class 1 --expenses 2500 --part-time 3:8:60
+  casivell project --gross 4500 --class 1 --expenses 2500 --break 5:6 --raise 15:8000
   casivell --gross 3200 --class 3 --state BY --children 2 --church
   casivell --gross 72000 --period year --class 1 --kvz 1,7
 
@@ -165,6 +171,7 @@ fn run_project(argv: Vec<String>) -> Result<String, String> {
         Household::starting_fresh(year, 1, employment, base.gross, request.monthly_expenses)
             .map_err(|e| e.to_string())?;
     household.annual_pay_growth = request.pay_growth;
+    household.schedule = request.schedule;
     // Expenses default to growing with prices, which is the assumption a user who has not
     // thought about it would want; a flat nominal spend over forty years is not a scenario
     // anyone means.

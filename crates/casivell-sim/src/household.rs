@@ -8,9 +8,8 @@ use crate::timeline::{Basis, Horizon};
 
 /// A household's starting position and how it changes.
 ///
-/// One steady employment, deliberately. Life events — children, property, part-time work
-/// — are Phase 6, and a kernel that half-modelled them would produce figures nobody
-/// could interpret.
+/// The baseline is one steady employment growing at a constant rate; [`Household::schedule`]
+/// carries the events that depart from it.
 #[derive(Debug, Clone, Copy)]
 pub struct Household {
     /// The year the projection starts in.
@@ -47,6 +46,12 @@ pub struct Household {
     /// Someone starting a projection at 40 has a pension record already; treating them
     /// as starting from zero would understate their entitlement by half a career.
     pub initial_pension_points: casivell_social::EntgeltPoints,
+
+    /// Life events that depart from the baseline.
+    ///
+    /// Empty by default, so a household with nothing scheduled behaves exactly as it did
+    /// before events existed — which is what makes the addition safe.
+    pub schedule: crate::events::Schedule,
 }
 
 impl Household {
@@ -77,6 +82,7 @@ impl Household {
             annual_expense_growth: Rate::ZERO,
             initial_wealth: Money::ZERO,
             initial_pension_points: casivell_social::EntgeltPoints::ZERO,
+            schedule: crate::events::Schedule::new(),
         })
     }
 }

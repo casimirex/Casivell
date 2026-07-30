@@ -12,7 +12,7 @@ use casivell_core::{Money, Rate};
 use casivell_lawdata::{Bundesland, TaxClass};
 use casivell_payroll::PayPeriod;
 use casivell_projection::Assumptions;
-use casivell_sim::{Basis, Horizon};
+use casivell_sim::{Basis, Event, Horizon, Schedule};
 
 /// Anything wrong with the supplied arguments.
 #[derive(Debug)]
@@ -398,6 +398,8 @@ pub(crate) struct ProjectRequest {
     pub(crate) monthly_expenses: Money,
     /// Annual growth in the household's own pay.
     pub(crate) pay_growth: Rate,
+    /// Life events departing from the baseline.
+    pub(crate) schedule: Schedule,
 }
 
 /// Parses the arguments of the `project` form.
@@ -419,19 +421,21 @@ where
     let mut investment = 0_i64;
     let mut expenses: Option<Money> = None;
     let mut pay_growth = 0_i64;
+    let mut schedule = Schedule::new();
 
     let mut iter = args.into_iter();
     while let Some(flag) = iter.next() {
         match flag.as_str() {
-            "--years" => {
-                years = u32::from(parse_u16(&flag, &mut iter)?);
-            }
+            "--years" => years = u32::from(parse_u16(&flag, &mut iter)?),
             "--real" => basis = Basis::Real,
             "--inflation" => inflation = parse_percent_millis(&flag, &mut iter)?,
             "--wage-growth" => wages = parse_percent_millis(&flag, &mut iter)?,
             "--return" => investment = parse_percent_millis(&flag, &mut iter)?,
             "--pay-growth" => pay_growth = parse_percent_millis(&flag, &mut iter)?,
             "--expenses" => expenses = Some(parse_money(&flag, &mut iter)?),
+            "--part-time" | "--break" | "--raise" | "--one-off" => {
+                parse_event_flag(&flag, &mut iter, &mut schedule)?;
+            }
             other => {
                 // Anything else belongs to the shared household description. Value-taking
                 // flags carry their value with them.
@@ -460,7 +464,171 @@ where
         monthly_expenses: expenses.ok_or_else(|| ArgError::Required("--expenses".to_owned()))?,
         pay_growth: Rate::from_percent_millis(pay_growth)
             .map_err(|_| bad("--pay-growth", "an annual rate within ±1000 %"))?,
+        schedule,
     })
+}
+
+/// Parses one life-event flag and adds it to the schedule.
+///
+/// Split out from [`parse_project`] to keep both inside the sixty-line limit, and because the
+/// event grammar is a self-contained thing worth reading on its own.
+fn parse_event_flag<I>(flag: &str, iter: &mut I, schedule: &mut Schedule) -> Result<(), ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let event = match flag {
+        "--part-time" => {
+            let spec = parse_period_spec(flag, iter)?;
+            Event::WorkingTime {
+                from_month: spec.from_month,
+                until_month: spec.until_month,
+                fraction: Rate::from_percent_millis(spec.value).map_err(|_| {
+                    ArgError::BadValue {
+                        flag: flag.to_owned(),
+                        value: spec.value.to_string(),
+                        expected: "a share of full time, such as 60".to_owned(),
+                    }
+                })?,
+            }
+        }
+        "--break" => {
+            let (from_month, until) = parse_window(flag, iter)?;
+            Event::UnpaidLeave {
+                from_month,
+                until_month: Some(until),
+            }
+        }
+        "--raise" => {
+            let (from_month, monthly_gross) = parse_month_amount(flag, iter)?;
+            Event::PayChange {
+                from_month,
+                monthly_gross,
+            }
+        }
+        _ => {
+            let (month, amount) = parse_month_amount(flag, iter)?;
+            Event::OneOff { month, amount }
+        }
+    };
+    *schedule = schedule.with(event).map_err(|_| schedule_error(flag))?;
+    Ok(())
+}
+
+fn schedule_error(flag: &str) -> ArgError {
+    ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: "too many events, or a window ending before it starts".to_owned(),
+        expected: "at most 32 events, each ending after it starts".to_owned(),
+    }
+}
+
+/// A windowed event specification, `FROM:UNTIL:VALUE` in years.
+struct PeriodSpec {
+    from_month: u32,
+    until_month: Option<u32>,
+    value: i64,
+}
+
+/// Parses `FROM:UNTIL:VALUE`, where the years are offsets into the projection and `UNTIL` may
+/// be empty for open-ended. `3:8:60` is "from year 3 to year 8, at 60 %".
+fn parse_period_spec<I>(flag: &str, iter: &mut I) -> Result<PeriodSpec, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "FROM:UNTIL:PERCENT in years, e.g. 3:8:60 (UNTIL may be empty)".to_owned(),
+    };
+    let mut parts = raw.split(':');
+    let from = parts.next().ok_or_else(bad)?;
+    let until = parts.next().ok_or_else(bad)?;
+    let value = parts.next().ok_or_else(bad)?;
+    if parts.next().is_some() {
+        return Err(bad());
+    }
+    Ok(PeriodSpec {
+        from_month: years_to_months(from).ok_or_else(bad)?,
+        until_month: if until.is_empty() {
+            None
+        } else {
+            Some(years_to_months(until).ok_or_else(bad)?)
+        },
+        value: parse_percent_millis_str(value).ok_or_else(bad)?,
+    })
+}
+
+/// Parses `FROM:UNTIL` in years.
+fn parse_window<I>(flag: &str, iter: &mut I) -> Result<(u32, u32), ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "FROM:UNTIL in years, e.g. 5:6".to_owned(),
+    };
+    let (from, until) = raw.split_once(':').ok_or_else(bad)?;
+    Ok((
+        years_to_months(from).ok_or_else(bad)?,
+        years_to_months(until).ok_or_else(bad)?,
+    ))
+}
+
+/// Parses `YEAR:AMOUNT`.
+fn parse_month_amount<I>(flag: &str, iter: &mut I) -> Result<(u32, Money), ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "YEAR:AMOUNT, e.g. 15:8000 or 5:-60000".to_owned(),
+    };
+    let (year, amount) = raw.split_once(':').ok_or_else(bad)?;
+    let month = years_to_months(year).ok_or_else(bad)?;
+    Ok((month, parse_money_str(amount).ok_or_else(bad)?))
+}
+
+/// Whole years as a month offset. Fractional years are deliberately not accepted: a life event
+/// stated to the month is a precision the rest of the input does not have.
+fn years_to_months(text: &str) -> Option<u32> {
+    text.parse::<u32>().ok()?.checked_mul(12)
+}
+
+/// A percentage in thousandths, from a bare string.
+fn parse_percent_millis_str(text: &str) -> Option<i64> {
+    let normalised = text.replace(',', ".");
+    let (whole, fraction) = normalised
+        .split_once('.')
+        .unwrap_or((normalised.as_str(), ""));
+    let whole: i64 = whole.parse().ok()?;
+    let mut thousandths = String::from(fraction);
+    thousandths.truncate(3);
+    while thousandths.len() < 3 {
+        thousandths.push('0');
+    }
+    whole
+        .checked_mul(1_000)?
+        .checked_add(thousandths.parse::<i64>().ok()?)
+}
+
+/// An amount from a bare string, accepting a leading minus.
+fn parse_money_str(text: &str) -> Option<Money> {
+    let (negative, digits) = match text.strip_prefix('-') {
+        Some(rest) => (true, rest),
+        None => (false, text),
+    };
+    let euros: i64 = digits.replace('.', "").parse().ok()?;
+    let signed = if negative {
+        euros.checked_neg()?
+    } else {
+        euros
+    };
+    Money::from_euro(signed).ok()
 }
 
 /// Whether a flag of the payslip form consumes the following argument.

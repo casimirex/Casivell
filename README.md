@@ -10,8 +10,8 @@ can we afford a year off?*
 Your financial data stays on your device. There is no network code path below the
 UI layer.
 
-> **Status: early.** The calculation engine is built and tested, statutory parameters can
-> be projected past the last enacted year, decades-long household projections run, and
+> **Status: early.** The engine is built and tested, statutory parameters can be projected
+> past the last enacted year, decades-long household projections run with life events, and
 > there is a working CLI. There is no graphical interface and no persistence yet — see
 > [ROADMAP.md](ROADMAP.md) for what exists and what comes next.
 
@@ -144,6 +144,19 @@ Every month runs the same verified payroll code that produces a payslip, against
 statutory parameters for that year. The row where enacted law ends is marked rather than
 footnoted.
 
+Life events change the course of it — `--part-time 3:8:60` for five years at three days a
+week, `--break 5:6` for a year off, `--raise 15:8000` for a promotion:
+
+```sh
+cargo run -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 \
+    --part-time 3:8:60 --pay-growth 2,8
+```
+
+Five years at 60 % pushes this household into deficit for six years, and its pension record
+accrues 0,62 Entgeltpunkte a year instead of 1,04 — a shortfall that does *not* recover when
+the hours do, because Entgeltpunkte are a ratio to the national average wage. That is the
+Teilzeitfalle, and showing it is the point of the exercise.
+
 ---
 
 ## Build
@@ -152,7 +165,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 398 tests
+cargo test --workspace                                        # 426 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2

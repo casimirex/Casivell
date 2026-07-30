@@ -20,7 +20,8 @@
 //! # What it models
 //!
 //! Employment income, statutory deductions, expenses, and the wealth that accumulates
-//! from the difference. Each simulated year resolves its own statutory parameters — via
+//! from the difference — with [`Schedule`] carrying life events that change any of them
+//! along the way. Each simulated year resolves its own statutory parameters — via
 //! `casivell_projection::resolve`, so enacted law is used where it exists and a labelled
 //! projection beyond it — and the tax and contributions for each month are computed by
 //! the same verified code that produces a payslip.
@@ -44,8 +45,15 @@
 //!   and bootstraps from it. Casivell ships no historical return table, because market
 //!   data has its own provenance problem and inventing a plausible series would be
 //!   exactly the failure `docs/ROADMAP_ERRATA.md` records.
-//! - **Life events.** Children, property, part-time work, career breaks. The kernel takes
-//!   a single steady employment; events are Phase 6.
+//! - **Elterngeld.** Modelling it correctly needs the Progressionsvorbehalt of § 32b EStG —
+//!   Elterngeld is tax-free but raises the rate on everything else — which in turn needs the
+//!   annual assessment inside the kernel rather than monthly withholding. Adding the payment
+//!   without the rate effect would understate a family's tax, so it is absent rather than
+//!   approximate. [`Event::OtherIncome`] takes a known net amount for anyone who wants to
+//!   model it themselves.
+//! - **Buying property.** Needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
+//!   amortisation. The deposit and the payment can be modelled today with
+//!   [`Event::OneOff`] and [`Event::ExpenseChange`], which is not the same thing.
 //! - **The annual assessment.** Tax is computed by withholding, which the statute designs
 //!   as an approximation of the annual liability. A refund or a further demand is not
 //!   modelled, because determining the taxable income is not implemented.
@@ -74,11 +82,13 @@
 #[cfg(test)]
 extern crate alloc;
 
+pub mod events;
 pub mod household;
 pub mod monte_carlo;
 pub mod rng;
 pub mod timeline;
 
+pub use events::{Event, MonthInputs, Rebase, Schedule};
 pub use household::{Household, SimulationConfig};
 pub use monte_carlo::{Outcome, monte_carlo};
 pub use rng::Prng;

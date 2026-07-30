@@ -11,7 +11,7 @@ use core::fmt::Write as _;
 
 use casivell_core::{Money, MoneyError};
 use casivell_lawdata::DataStatus;
-use casivell_sim::{Basis, Household, MonthSnapshot, SimulationConfig, Sink};
+use casivell_sim::{Basis, Event, Household, MonthSnapshot, SimulationConfig, Sink};
 
 use crate::format::{euro, percent};
 
@@ -100,6 +100,7 @@ pub(crate) fn render(
 ) -> Result<String, MoneyError> {
     let mut out = String::with_capacity(4_096);
     write_header(&mut out, household, config, sink)?;
+    write_events(&mut out, household)?;
     write_table(&mut out, sink)?;
     write_notes(&mut out, config);
     Ok(out)
@@ -133,6 +134,79 @@ fn write_header(
     );
     let _ = writeln!(out);
     Ok(())
+}
+
+/// Lists the scheduled events, so the reader can see what was applied rather than inferring it
+/// from a kink in the table.
+fn write_events(out: &mut String, household: &Household) -> Result<(), MoneyError> {
+    if household.schedule.is_empty() {
+        return Ok(());
+    }
+    let _ = writeln!(out, "  Life events");
+    for event in household.schedule.events() {
+        let line = describe(event, household.start_year.get())?;
+        let _ = writeln!(out, "  · {line}");
+    }
+    let _ = writeln!(out);
+    Ok(())
+}
+
+/// One line describing a scheduled event, in calendar years rather than month offsets.
+fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
+    let year = |month: u32| start_year.saturating_add(u16::try_from(month / 12).unwrap_or(0));
+    let span = |from: u32, until: Option<u32>| match until {
+        Some(end) => format!("{} to {}", year(from), year(end)),
+        None => format!("{} onward", year(from)),
+    };
+
+    Ok(match *event {
+        Event::WorkingTime {
+            from_month,
+            until_month,
+            fraction,
+        } => format!(
+            "{}: working time {} of full",
+            span(from_month, until_month),
+            percent(fraction)?
+        ),
+        Event::UnpaidLeave {
+            from_month,
+            until_month,
+        } => format!(
+            "{}: unpaid leave, no employment income",
+            span(from_month, until_month)
+        ),
+        Event::PayChange {
+            from_month,
+            monthly_gross,
+        } => format!(
+            "{}: gross pay becomes {} € and grows from there",
+            year(from_month),
+            euro(monthly_gross)?
+        ),
+        Event::ExpenseChange {
+            from_month,
+            monthly_expenses,
+        } => format!(
+            "{}: expenses become {} € and grow from there",
+            year(from_month),
+            euro(monthly_expenses)?
+        ),
+        Event::OneOff { month, amount } => format!(
+            "{}: one-off of {} € against wealth",
+            year(month),
+            euro(amount)?
+        ),
+        Event::OtherIncome {
+            from_month,
+            until_month,
+            monthly_amount,
+        } => format!(
+            "{}: other income of {} €/month, no contributions",
+            span(from_month, until_month),
+            euro(monthly_amount)?
+        ),
+    })
 }
 
 fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
