@@ -1,0 +1,90 @@
+name: CI
+
+# Every check here is one a developer can run locally with the same command.
+# A CI that cannot be reproduced on a laptop teaches people to push and pray.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+  # R10: zero warnings. This is the switch that makes the coding standard binding
+  # rather than aspirational.
+  RUSTFLAGS: "-D warnings"
+
+jobs:
+  engine:
+    name: Engine
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # No toolchain input: rust-toolchain.toml pins the channel, components and
+      # targets. Specifying a version here as well would create two sources of
+      # truth that silently disagree.
+      - name: Show toolchain
+        run: |
+          rustc --version
+          cargo --version
+          cargo clippy --version
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Formatting
+        run: cargo fmt --all --check
+
+      - name: Lints
+        run: cargo clippy --workspace --all-targets -- -D warnings
+
+      - name: Tests
+        run: cargo test --workspace
+
+      # The engine must build for the target it actually ships to. A workspace that
+      # compiles for the host but not for wasm32 is not a shippable engine, and
+      # `#![no_std]` crates are exactly where that divergence hides.
+      - name: Build for wasm32
+        run: cargo build --workspace --target wasm32-unknown-unknown --release
+
+      # D2: no statutory constant outside casivell-lawdata. The scanner skips
+      # `#[cfg(test)]` modules, because a boundary test should name the boundary.
+      - name: No statutory literals in calculation crates
+        run: python3 scripts/check_no_statutory_literals.py
+
+      # D6: the reference implementation must stay runnable, since the cross-check
+      # values in casivell-tax are regenerated from it by hand.
+      - name: Reference implementation runs
+        run: python3 docs/reference/generate_tariff_reference.py
+
+      - name: Documentation builds
+        run: cargo doc --workspace --no-deps
+        env:
+          RUSTDOCFLAGS: "-D warnings"
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: Swatinem/rust-cache@v2
+      # The engine currently has zero third-party dependencies, which is itself a
+      # property worth defending: every crate added to a financial calculation
+      # kernel is code a reviewer must also trust.
+      - name: Assert the engine has no third-party dependencies
+        run: |
+          set -euo pipefail
+          external=$(cargo metadata --format-version 1 --locked \
+            | python3 -c '
+import json, sys
+meta = json.load(sys.stdin)
+workspace = {m["name"] for m in meta["packages"] if m["id"] in meta["workspace_members"]}
+external = sorted({p["name"] for p in meta["packages"]} - workspace)
+print("\n".join(external))
+')
+          if [ -n "$external" ]; then
+            echo "::warning::The engine has gained third-party dependencies:"
+            echo "$external"
+          else
+            echo "Engine dependency count: 0"
+          fi

@@ -1,0 +1,25 @@
+# R4: "Restrict functions to a single printed page." A page is ~60 lines.
+too-many-lines-threshold = 60
+cognitive-complexity-threshold = 15
+
+# R6: declare data at the smallest possible level of scope.
+avoid-breaking-exported-api = false
+
+# German statute abbreviations use internal capitals, which `doc_markdown` reads as
+# unquoted code identifiers. They are proper names of legal instruments and must be
+# written the way the instruments themselves are, so they are registered here rather
+# than being backticked or spelled differently in prose.
+doc-valid-idents = [
+    # Statutes and ordinances
+    "EStG", "SolzG", "SGB", "SteFeG", "InflAusG", "ErbStG", "BEEG", "StEntlG",
+    "FamEntlastG", "ExMinFG", "SVBezGrV", "RWBestV", "KStG", "AStG", "WpIG",
+    "StBerG", "RDG", "DDG", "GrEStG",
+    # Institutions
+    "BMF", "BMAS", "BMG", "BMBF", "DRV",
+    # Domain terms with internal capitals
+    "zvE", "GKV", "PKV", "JAEG", "PAP", "ALG", "WEG",
+    # Technical terms
+    "IndexedDB", "WebAssembly", "SharedArrayBuffer", "OPFS", "COOP", "COEP",
+    # Inherit clippy's own default list.
+    "..",
+]

@@ -1,0 +1,70 @@
+[workspace]
+resolver = "3"
+members = ["crates/casivell-core", "crates/casivell-lawdata", "crates/casivell-tax"]
+
+[workspace.package]
+edition = "2024"
+rust-version = "1.85"
+license = "Apache-2.0"
+repository = "https://github.com/srinivasan/casivell"
+
+# Lints are declared once here and inherited by every crate via
+# `[lints] workspace = true`. CI runs with `-D warnings`, so each of these is a
+# build failure, not a suggestion. See docs/CODING_STANDARD.md.
+[workspace.lints.rust]
+unsafe_code = "forbid"
+missing_docs = "warn"
+missing_debug_implementations = "warn"
+unreachable_pub = "warn"
+elided_lifetimes_in_paths = "warn"
+
+[workspace.lints.clippy]
+pedantic = { level = "warn", priority = -1 }
+
+# R7: every fallible operation is handled explicitly. No silent unwinding.
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+indexing_slicing = "deny"
+
+# R3 / R5: arithmetic that can wrap or truncate must be spelled out.
+arithmetic_side_effects = "deny"
+cast_possible_truncation = "deny"
+cast_possible_wrap = "deny"
+cast_precision_loss = "deny"
+cast_sign_loss = "deny"
+float_arithmetic = "deny"
+
+# R4: bounded complexity.
+too_many_lines = "warn"
+cognitive_complexity = "warn"
+
+# Two `pedantic` lints are wrong for this codebase and are relaxed deliberately
+# rather than suppressed at each site.
+#
+# `many_single_char_names`: in the rounding and narrowing helpers, `n`, `d`, `q`
+# and `r` are numerator, denominator, quotient and remainder. Those are the names
+# the mathematics uses, and `numerator`/`denominator` would make a three-line
+# division proof harder to check against the algebra it implements, not easier.
+many_single_char_names = "allow"
+# `similar_names`: the domain is full of genuine near-homographs that must not be
+# renamed for the linter's benefit — `employee`/`employer` above all, and the
+# statutory pairs `Freibetrag`/`Freigrenze` and `Beitragssatz`/`Beitragssatzpunkt`.
+# Renaming either half to satisfy the lint would make the code disagree with the
+# statute it transcribes.
+similar_names = "allow"
+
+[profile.release]
+opt-level = "s"
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = "symbols"
+
+# Tests need the release codegen path exercised too, but with debug assertions
+# live so that the R5 invariant checks actually fire.
+[profile.test]
+debug-assertions = true
+overflow-checks = true

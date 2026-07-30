@@ -1,0 +1,33 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+
+# Cargo.lock IS committed. The engine is a set of libraries, but reproducible
+# builds are a product requirement (see ROADMAP.md §3), and a lockfile is how a
+# reviewer rebuilds the exact WASM we shipped.
+# Cargo.lock
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*~
+
+# Machine-local Claude Code permissions. Shared project config belongs in
+# .claude/settings.json, which is committed; the *.local.json variant holds
+# per-machine grants and absolute paths.
+.claude/settings.local.json
+.claude/*.tmp.*
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Python bytecode from the reference scripts
+__pycache__/
+*.py[cod]
+
+# Node, for when the UI lands
+node_modules/
+dist/
+.vite/

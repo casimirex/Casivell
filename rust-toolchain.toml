@@ -1,0 +1,7 @@
+[toolchain]
+# Pinned deliberately: reproducible builds are a product requirement, not a
+# convenience. Bumping this is a reviewed change (see docs/CODING_STANDARD.md R10).
+channel = "stable"
+components = ["rustfmt", "clippy"]
+targets = ["wasm32-unknown-unknown"]
+profile = "minimal"
