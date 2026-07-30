@@ -58,13 +58,14 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-core` | `Money` (integer cents), `Rate` (integer ppm), named rounding, `TaxYear`. `#![no_std]`, `#![forbid(unsafe_code)]`, no panicking operators. |
 | `casivell-lawdata` | Year-keyed statutory tables for 2025 and 2026, each with a `Provenance`. Income tax tariff, pension, unemployment, health, care, Soli, church tax, retirement ages, all 16 Bundesländer. |
 | `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. |
+| `casivell-income` | § 2 EStG: gross pay → taxable income, incl. Vorsorgeaufwendungen with both § 10 caps; the annual assessment, the Günstigerprüfung and the refund. |
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
 | `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; net pay for a month or a year. |
 | `casivell-projection` | Statutory parameters past the last enacted year, derived from explicit assumptions and marked `Projected`. |
 | `casivell-sim` | Month-by-month household projection over decades. `#![no_std]` and streaming: one month held at a time. |
 | `casivell-cli` | The `casivell` command: a payslip, the parameters for any year, and a household projection. The only crate using `std`. |
 
-**355 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
+**398 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -99,12 +100,12 @@ Three independent checks against figures Casivell did not derive:
 
 | Gap | Effect | Where recorded |
 |---|---|---|
-| zvE determination | **Not implemented at all** — the annual tariff takes an already-determined taxable income | `casivell-tax` crate docs |
 | Weekly / daily pay periods | Refused, not approximated: `LZZ = 3` and `4` scale by 360/7 and 1/360, which do not terminate in decimal | `casivell-payroll` crate docs |
 | Sonstige Bezüge | A thirteenth month or bonus follows § 39b Abs. 3, a separate calculation | `casivell-payroll` crate docs |
 | Versorgungsbezüge, Altersentlastungsbetrag | Pensions run through payroll are not modelled | `casivell-payroll` crate docs |
 | Faktorverfahren | The alternative to classes III/V for couples | `casivell-payroll` crate docs |
-| § 51a Abs. 2 church tax base | Correct in the **withholding** path; still overstated for families in the **annual assessment** | `ChurchTaxResult::base_is_exact` |
+| § 51a Abs. 2 church tax base | Correct in both the withholding and the assessment path. Still unimplemented in the standalone `casivell_tax::church_tax` helper | `ChurchTaxResult::base_is_exact` |
+| zvE exactness | § 10's interaction is not reconciled against a real Steuerbescheid; several income categories absent | `Assessment::is_exact` |
 | Kirchensteuer-Kappung | Overstated at high incomes | `ChurchTaxParameters` docs |
 | Minijob / Übergangsbereich | Contributions are wrong below the Midijob threshold | `casivell-social` crate docs |
 | PKV comparison | Private cover is modelled for the Vorsorgepauschale, but there is no GKV/PKV cost comparison | this table |
@@ -209,15 +210,56 @@ tax, coding standard, CI.
 by a stronger criterion, now met: agreement with the BMF's own published reference
 tables rather than with a third-party calculator.
 
-### Phase 2 — Taxable income determination · ~4 weeks
+### Phase 2 — Taxable income determination ✅ *core complete*
 
-The largest correctness risk in the product.
+- [x] **Werbungskosten** with the § 9a Pauschbetrag as a floor, not a cap.
+- [x] **Vorsorgeaufwendungen** in full: § 10 Abs. 1 Nr. 2 with the Abs. 3 cap derived from the
+      miners' pension scheme, and Nr. 3/3a with the Abs. 4 cap *and* its Satz 4 override.
+- [x] **The 4 % Krankengeld reduction**, applied to the general-rate portion only — not to
+      the Zusatzbeitrag.
+- [x] **Sonderausgaben-Pauschbetrag** (§ 10c), also a floor, with church tax paid counting
+      toward it.
+- [x] **Kindergeld versus Kinderfreibetrag** (§ 31): the Günstigerprüfung on the tax *saving*,
+      with the Kindergeld clawed back when the allowance wins.
+- [x] **The annual assessment and the refund** — withheld less owed, which is the figure most
+      people actually want from a tax tool.
+- [x] **§ 51a Abs. 2 surcharge base**, closing the gap `casivell_tax::church_tax` recorded:
+      church tax and Soli are now levied on the child-reduced base in the assessment path too.
+- [ ] Kapitalerträge: Abgeltungsteuer and the Sparer-Pauschbetrag.
+- [ ] Außergewöhnliche Belastungen (§§ 33–33b), which need a zumutbare Belastung.
+- [ ] Tax class comparison III/V versus IV+Faktor.
+- [ ] The other five income categories of § 2 Abs. 1.
 
-- [ ] Werbungskosten, Arbeitnehmer-Pauschbetrag
-- [ ] Sonderausgaben incl. the Vorsorgeaufwendungen limits
-- [ ] Kindergeld vs. Kinderfreibetrag (Günstigerprüfung), § 51a base for church tax
-- [ ] Kapitalerträge: Abgeltungsteuer, Sparer-Pauschbetrag
-- [ ] Tax class comparison III/V vs IV+Faktor — flagging the planned move to Faktorverfahren
+**The verification problem, and what was done about it.**
+
+This is the first substantial part of Casivell with **no official reference table**. Payroll
+has 516 published values; § 32a has an independent implementation. Neither exists for § 10.
+That is stated in the crate documentation rather than glossed, and the verification is built
+from what is available:
+
+1. Every constant cited, and three of them cross-checked against the Programmablaufplan's own
+   tables — the Kinderfreibetrag and both Pauschbeträge appear in each and must agree.
+2. The Altersvorsorge cap is **derived** from the miners' pension ceiling and rate, and
+   asserted against the published 30 826 €. A derivation that reproduces the published figure
+   is stronger than transcribing it.
+3. An **external validation point** for the Günstigerprüfung: published commentary puts the
+   crossover for a jointly assessed couple with one child near 86 000 €, and a test checks it.
+4. A **bounded comparison against the Vorsorgepauschale** — the same contributions run through
+   two independent computations, one of them verified against 516 values. The test also pins
+   the *direction*: § 10 must be the more generous, because the Vorsorgepauschale halves the
+   Zusatzbeitrag while § 10 deducts it in full.
+5. Structural properties: taxable income never exceeds gross, deductions are monotonic, caps
+   bind where they should, and the Günstigerprüfung never chooses the worse option.
+
+**`Assessment::is_exact` is always `false`.** § 10's interaction has not been reconciled
+against a real Steuerbescheid, and several income categories are absent. The flag is in the
+type rather than a footnote, for the same reason `ChurchTaxResult::base_is_exact` is: a caveat
+a caller can ignore by accident will be ignored.
+
+**A finding worth recording.** Because the § 10 Abs. 4 Satz 4 override carries an employee's
+basket past the 1 900 € cap on health and care cover alone, additional liability or
+unemployment insurance deducts **exactly nothing**. A planner that showed a tax saving there
+would be wrong, so it is asserted as a test rather than left implicit.
 
 ### Phase 3 — Simulation kernel ✅ *complete*
 

@@ -42,6 +42,7 @@ crates/
 ├── casivell-core/      Money (integer cents), Rate (integer ppm), named rounding
 ├── casivell-lawdata/   Year-keyed statutory tables, every figure cited
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
+├── casivell-income/    § 2 EStG: gross → taxable income, and the annual assessment
 ├── casivell-social/    Social insurance contributions, pension entitlement
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
@@ -151,7 +152,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 355 tests
+cargo test --workspace                                        # 398 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -217,6 +218,12 @@ The mechanisms that came out of it:
   its Eckwerte, and the derivation reproduces **all eight published coefficients** for
   both enacted years exactly. Nothing past the last statute can be obtained without
   passing explicit assumptions, and everything so obtained reports itself as projected.
+- Where no official reference exists — `casivell-income`, which determines taxable income
+  under § 10 — that is **stated in the crate docs**, and the verification is built from what
+  is available: constants cross-checked against the Programmablaufplan's own tables, the
+  Altersvorsorge cap *derived* and matched to its published value, an external crossover
+  figure for the Günstigerprüfung, and a bounded comparison against the Vorsorgepauschale.
+  `Assessment::is_exact` is `false` and says why.
 - The simulation kernel is `#![no_std]` and **streams**: it holds one month at a time and
   hands each to a sink. A forty-year run is `O(1)` in memory, and ten thousand Monte Carlo
   paths cost no more than one. `Vec` appearing outside a test module would mean the design

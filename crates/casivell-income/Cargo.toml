@@ -1,0 +1,20 @@
+[package]
+name = "casivell-income"
+version = "0.1.0"
+description = "Determining taxable income under § 2 EStG, and the annual assessment."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+casivell-core = { path = "../casivell-core" }
+casivell-lawdata = { path = "../casivell-lawdata" }
+casivell-social = { path = "../casivell-social" }
+casivell-tax = { path = "../casivell-tax" }
+
+[dev-dependencies]
+casivell-payroll = { path = "../casivell-payroll" }
+
+[lints]
+workspace = true

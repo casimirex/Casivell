@@ -52,6 +52,7 @@
     )
 )]
 
+pub mod deductions;
 pub mod income_tax;
 pub mod payroll;
 pub mod provenance;
@@ -59,6 +60,7 @@ pub mod retirement;
 pub mod social;
 pub mod surcharges;
 
+pub use deductions::DeductionParameters;
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use payroll::{PayrollParameters, TaxClass};
 pub use provenance::{DataStatus, Provenance};

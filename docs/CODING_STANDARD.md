@@ -315,6 +315,17 @@ shifts the 42 % subtrahend by seven cents and the reproduction fails. Finding th
 three cents also located a real boundary — the 42 %/45 % lines cross at the *top of
 zone 4*, one euro below where zone 5 begins.
 
+**And where neither exists, say so.** `casivell-income` implements § 10 EStG, for which there
+is no official reference table and no independent implementation to hand. That is stated in the
+crate documentation rather than glossed, and the verification is assembled from weaker but real
+evidence: constants cross-checked against a *different* statutory table that must agree with
+them, a cap derived rather than transcribed and matched to its published value, one external
+figure from published commentary, and a bounded comparison against an already-verified
+approximation of the same quantity — including the *direction* of the expected difference.
+
+None of that is as strong as 516 published values, and the crate says so. A verification
+strategy that overstates its own confidence is worse than a weak one honestly labelled.
+
 **An independent implementation, for algebra the authority does not tabulate.**
 
 `docs/reference/generate_tariff_reference.py` evaluates § 32a with

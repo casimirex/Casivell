@@ -33,6 +33,8 @@ from pathlib import Path
 # deliberately absent: that is where these figures are supposed to live.
 SCANNED_DIRS = [
     Path("crates/casivell-core/src"),
+    Path("crates/casivell-income/src"),
+    Path("crates/casivell-sim/src"),
     Path("crates/casivell-payroll/src"),
     Path("crates/casivell-projection/src"),
     Path("crates/casivell-social/src"),
@@ -69,6 +71,15 @@ WATCHED = {
     # Solidaritaetszuschlag, SolzG
     "19_950": "Soli Freigrenze 2025",
     "20_350": "Soli Freigrenze 2026",
+    # Deductions, sections 9a / 10 / 32 / 66 EStG
+    "1_230": "Arbeitnehmer-Pauschbetrag",
+    "30_826": "Altersvorsorge Hoechstbetrag 2026",
+    "124_800": "knappschaftliche BBG 2026",
+    "6_828": "sachlicher Kinderfreibetrag 2026",
+    "2_928": "BEA-Freibetrag 2026",
+    "9_756": "Kinderfreibetrag total 2026",
+    "4_878": "Kinderfreibetrag half 2026",
+    "4_260": "Entlastungsbetrag fuer Alleinerziehende 2026",
 }
 
 CFG_TEST = re.compile(r"#\s*\[\s*cfg\s*\(\s*test\s*\)\s*\]")
