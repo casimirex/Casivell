@@ -71,6 +71,14 @@ capability.
 **Consequence:** error types are `Copy` and carry no strings. `MoneyError` is a
 small enum with numeric payloads, returnable from a hot loop for free.
 
+**And it improved a design rather than constraining one.** The simulation kernel cannot
+return a 480-month timeline as a `Vec`, which looked like an obstacle and was in fact the
+right pressure: it *streams*, holding one month and handing each to a `Sink`. Memory is
+`O(1)` in the horizon, the caller decides what to keep, and ten thousand Monte Carlo paths
+cost no more than one. A collection type appearing in `casivell-sim` outside a test module
+would mean the design had been abandoned, which is why `alloc` is pulled in under
+`cfg(test)` only and says so at the import.
+
 ---
 
 ## R4 — No function longer than one printed page (~60 lines).
@@ -317,6 +325,18 @@ amount of internal consistency checking could establish.
 
 That script must **never** be generated from the engine's output. It would make the
 cross-check a tautology.
+
+### D7a — Reproducibility is part of the input.
+
+Where a result depends on randomness, the seed is an input like any other and the same seed
+must reproduce the same result forever. `casivell-sim` therefore contains its own
+`xorshift64*` rather than depending on a generator crate: an upstream algorithm change
+would silently alter every saved projection, and a test pinning the stream makes any change
+here a deliberate decision.
+
+The same reasoning rules out `%` on the bounded draw. Naive modulo is biased toward small
+values, and for a small bound over a 64-bit range that bias is not subtle — it would skew
+every projection while looking like a plausible distribution.
 
 ### D7 — Report known inexactness in the type system.
 

@@ -34,6 +34,7 @@
 mod args;
 mod format;
 mod law_report;
+mod project_report;
 mod report;
 
 use std::process::ExitCode;
@@ -41,6 +42,7 @@ use std::process::ExitCode;
 use casivell_core::TaxYear;
 use casivell_payroll::{Employment, HealthCover, PayrollLaw, net_pay};
 use casivell_projection::resolve;
+use casivell_sim::{Household, SimulationConfig, simulate};
 use casivell_social::Insured;
 
 use args::Request;
@@ -52,6 +54,7 @@ casivell — German payroll and net pay, computed from statute
 USAGE
   casivell --gross <amount> --class <1-6> [options]     a payslip
   casivell law --year <year> [--inflation <p>] [--wage-growth <p>]
+  casivell project --gross <amount> --class <1-6> --expenses <amount> [options]
 
 The `law` form prints the statutory parameters for a year. Past 2026 no statute
 exists, so the figures are projected from explicit assumptions and labelled as
@@ -72,6 +75,15 @@ OPTIONS
       --kvz <percent>     The health fund's full supplementary rate (default 2,9)
   -h, --help              This text
 
+PROJECT OPTIONS
+      --expenses <amount> Monthly expenses (required)
+      --years <n>         Horizon in years (default 40, max 70)
+      --real              Show figures in today's purchasing power
+      --pay-growth <p>    Annual growth in this household's pay (default 0,0)
+      --return <p>        Annual nominal return on wealth (default 0,0)
+      --inflation <p>     Annual price inflation (default 2,0)
+      --wage-growth <p>   Annual wage growth (default 2,8)
+
 LAW OPTIONS
       --inflation <p>     Annual price inflation for projection (default 2,0)
       --wage-growth <p>   Annual wage growth for projection (default 2,8)
@@ -80,6 +92,7 @@ EXAMPLES
   casivell --gross 4500 --class 1
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
+  casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
   casivell --gross 3200 --class 3 --state BY --children 2 --church
   casivell --gross 72000 --period year --class 1 --kvz 1,7
 
@@ -98,11 +111,10 @@ fn main() -> ExitCode {
         return ExitCode::SUCCESS;
     }
 
-    let is_law = argv.first().is_some_and(|a| a == "law");
-    let outcome = if is_law {
-        run_law(argv.into_iter().skip(1).collect())
-    } else {
-        run(argv)
+    let outcome = match argv.first().map(String::as_str) {
+        Some("law") => run_law(argv.into_iter().skip(1).collect()),
+        Some("project") => run_project(argv.into_iter().skip(1).collect()),
+        _ => run(argv),
     };
 
     match outcome {
@@ -132,6 +144,42 @@ fn run_law(argv: Vec<String>) -> Result<String, String> {
 
     let law = resolve(year, &assumptions).map_err(|e| e.to_string())?;
     law_report::render(&law, &assumptions).map_err(|e| e.to_string())
+}
+
+/// Projects a household forward and renders the result.
+fn run_project(argv: Vec<String>) -> Result<String, String> {
+    let request = args::parse_project(argv).map_err(|e| e.to_string())?;
+    let base = request.base;
+
+    let year = TaxYear::new(base.year).map_err(|_| {
+        format!(
+            "{} is outside the representable range {}–{}.",
+            base.year,
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_REPRESENTABLE.get(),
+        )
+    })?;
+
+    let employment = build_employment(&base).map_err(|e| e.to_string())?;
+    let mut household =
+        Household::starting_fresh(year, 1, employment, base.gross, request.monthly_expenses)
+            .map_err(|e| e.to_string())?;
+    household.annual_pay_growth = request.pay_growth;
+    // Expenses default to growing with prices, which is the assumption a user who has not
+    // thought about it would want; a flat nominal spend over forty years is not a scenario
+    // anyone means.
+    household.annual_expense_growth = request.assumptions.price_inflation();
+
+    let config = SimulationConfig {
+        horizon: request.horizon,
+        assumptions: request.assumptions,
+        investment_return: request.investment_return,
+        basis: request.basis,
+    };
+
+    let mut sink = project_report::YearlySink::new();
+    simulate(&household, &config, &mut sink).map_err(|e| e.to_string())?;
+    project_report::render(&household, &config, &sink).map_err(|e| e.to_string())
 }
 
 /// Parses, computes and renders. Returns a message suitable for stderr on failure.
@@ -208,7 +256,7 @@ fn compute(
 
 #[cfg(test)]
 mod tests {
-    use super::{run, run_law};
+    use super::{run, run_law, run_project};
 
     fn argv(args: &[&str]) -> Vec<String> {
         args.iter().map(|s| (*s).to_owned()).collect()
@@ -370,5 +418,180 @@ mod tests {
         assert!(!parent.contains("Childless surcharge"));
         // And the parent keeps more, because the care rate is lower.
         assert_ne!(childless, parent);
+    }
+
+    /// The `project` form must run end to end and label where enacted law stops.
+    #[test]
+    fn the_project_form_runs_and_marks_the_end_of_enacted_law() {
+        let text = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "10",
+        ]))
+        .expect("succeeds");
+        assert!(text.contains("Haushaltsprojektion"));
+        assert!(text.contains("enacted law ends here"));
+        assert!(text.contains("2026"));
+        assert!(text.contains("2035"));
+    }
+
+    /// A forty-year projection — the horizon the product promises — must work by default.
+    #[test]
+    fn the_project_form_defaults_to_forty_years() {
+        let text = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+        ]))
+        .expect("succeeds");
+        assert!(text.contains("40 years from 2026"));
+        assert!(text.contains("2065"), "the final year is missing");
+    }
+
+    /// `--real` must change the figures, not merely the label.
+    #[test]
+    fn the_real_basis_changes_the_projection() {
+        let nominal = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "25",
+        ]))
+        .expect("a");
+        let real = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "25",
+            "--real",
+        ]))
+        .expect("b");
+        assert_ne!(nominal, real);
+        assert!(real.contains("today's purchasing power"));
+    }
+
+    /// The household flags shared with the payslip form must reach the projection, so the
+    /// two forms cannot describe different people from the same arguments.
+    #[test]
+    fn the_shared_household_flags_reach_the_projection() {
+        let childless = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2000",
+            "--years",
+            "5",
+        ]))
+        .expect("a");
+        let parent = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2000",
+            "--years",
+            "5",
+            "--children",
+            "2",
+        ]))
+        .expect("b");
+        // Children lower the care rate, so net pay and therefore wealth must differ.
+        assert_ne!(childless, parent);
+
+        let bavarian_churchgoer = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2000",
+            "--years",
+            "5",
+            "--state",
+            "BY",
+            "--church",
+        ]))
+        .expect("c");
+        assert_ne!(childless, bavarian_churchgoer);
+    }
+
+    /// Expenses are required: a projection without them would silently assume a household
+    /// spends nothing, which is not a scenario anyone means.
+    #[test]
+    fn the_project_form_requires_expenses() {
+        let err = run_project(argv(&["--gross", "4500", "--class", "1"])).expect_err("refuses");
+        assert!(err.contains("--expenses"), "unhelpful message: {err}");
+    }
+
+    /// A horizon past the kernel's limit must be refused with the limit named.
+    #[test]
+    fn an_excessive_horizon_is_refused() {
+        let err = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "200",
+        ]))
+        .expect_err("refuses");
+        assert!(
+            err.contains("70"),
+            "the message should name the limit: {err}"
+        );
+    }
+
+    /// The investment return must actually compound: a higher return must leave more wealth.
+    #[test]
+    fn a_higher_return_leaves_more_wealth() {
+        let low = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "30",
+            "--return",
+            "1,0",
+        ]))
+        .expect("a");
+        let high = run_project(argv(&[
+            "--gross",
+            "4500",
+            "--class",
+            "1",
+            "--expenses",
+            "2500",
+            "--years",
+            "30",
+            "--return",
+            "7,0",
+        ]))
+        .expect("b");
+        assert_ne!(low, high);
+        assert!(high.contains("7,00 %"));
     }
 }

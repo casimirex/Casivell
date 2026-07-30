@@ -71,6 +71,7 @@ jobs:
           cargo run -q -p casivell-cli -- --gross 4500 --class 1 > /dev/null
           cargo run -q -p casivell-cli -- law --year 2026 > /dev/null
           cargo run -q -p casivell-cli -- law --year 2060 > /dev/null
+          cargo run -q -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 > /dev/null
           echo "CLI runs."
 
       - name: Documentation builds

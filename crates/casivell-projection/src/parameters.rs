@@ -87,6 +87,9 @@ fn concat_basis(what: &'static str, note: &'static str) -> &'static str {
         ("church tax, carried forward", _) => {
             "Kirchensteuergesetze der Länder, rates assumed unchanged from 2026 (NOT enacted law)"
         }
+        ("PAP, projected", _) => {
+            "BMF-Programmablaufplan Lohnsteuer, parameters projected from 2026; algorithm structure unchanged (NOT enacted law)"
+        }
         ("retirement, carried forward", _) => {
             "§§ 77, 235 SGB VI, assumed unchanged from 2026 (NOT enacted law)"
         }

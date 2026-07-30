@@ -12,6 +12,7 @@ use casivell_core::{Money, Rate};
 use casivell_lawdata::{Bundesland, TaxClass};
 use casivell_payroll::PayPeriod;
 use casivell_projection::Assumptions;
+use casivell_sim::{Basis, Horizon};
 
 /// Anything wrong with the supplied arguments.
 #[derive(Debug)]
@@ -377,6 +378,109 @@ where
         year.ok_or_else(|| ArgError::Required("--year".to_owned()))?,
         assumptions,
     ))
+}
+
+/// A parsed request to project a household forward.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct ProjectRequest {
+    /// The household's employment and circumstances, shared with the payslip form so the
+    /// two cannot disagree about the same person.
+    pub(crate) base: Request,
+    /// How long to project.
+    pub(crate) horizon: Horizon,
+    /// Nominal or real.
+    pub(crate) basis: Basis,
+    /// Statutory growth assumptions.
+    pub(crate) assumptions: Assumptions,
+    /// Annual nominal investment return on accumulated wealth.
+    pub(crate) investment_return: Rate,
+    /// Monthly expenses.
+    pub(crate) monthly_expenses: Money,
+    /// Annual growth in the household's own pay.
+    pub(crate) pay_growth: Rate,
+}
+
+/// Parses the arguments of the `project` form.
+///
+/// # Errors
+///
+/// [`ArgError`] describing the first problem found.
+pub(crate) fn parse_project<I>(args: I) -> Result<ProjectRequest, ArgError>
+where
+    I: IntoIterator<Item = String>,
+{
+    // Collected first so the shared household flags can be handed to `Request::parse`
+    // unchanged, rather than duplicating their parsing here.
+    let mut shared: Vec<String> = Vec::new();
+    let mut years = 40_u32;
+    let mut basis = Basis::Nominal;
+    let mut inflation = Assumptions::DEFAULT_PRICE_INFLATION_PERCENT_MILLIS;
+    let mut wages = Assumptions::DEFAULT_WAGE_GROWTH_PERCENT_MILLIS;
+    let mut investment = 0_i64;
+    let mut expenses: Option<Money> = None;
+    let mut pay_growth = 0_i64;
+
+    let mut iter = args.into_iter();
+    while let Some(flag) = iter.next() {
+        match flag.as_str() {
+            "--years" => {
+                years = u32::from(parse_u16(&flag, &mut iter)?);
+            }
+            "--real" => basis = Basis::Real,
+            "--inflation" => inflation = parse_percent_millis(&flag, &mut iter)?,
+            "--wage-growth" => wages = parse_percent_millis(&flag, &mut iter)?,
+            "--return" => investment = parse_percent_millis(&flag, &mut iter)?,
+            "--pay-growth" => pay_growth = parse_percent_millis(&flag, &mut iter)?,
+            "--expenses" => expenses = Some(parse_money(&flag, &mut iter)?),
+            other => {
+                // Anything else belongs to the shared household description. Value-taking
+                // flags carry their value with them.
+                shared.push(other.to_owned());
+                if takes_a_value(other) {
+                    shared.push(next_value(other, &mut iter)?);
+                }
+            }
+        }
+    }
+
+    let bad = |flag: &str, expected: &str| ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: "out of range".to_owned(),
+        expected: expected.to_owned(),
+    };
+
+    Ok(ProjectRequest {
+        base: Request::parse(shared)?,
+        horizon: Horizon::years(years).map_err(|_| bad("--years", "a horizon up to 70 years"))?,
+        basis,
+        assumptions: Assumptions::from_percent_millis(inflation, wages)
+            .map_err(|_| bad("--inflation/--wage-growth", "an annual rate within ±20 %"))?,
+        investment_return: Rate::from_percent_millis(investment)
+            .map_err(|_| bad("--return", "an annual rate within ±1000 %"))?,
+        monthly_expenses: expenses.ok_or_else(|| ArgError::Required("--expenses".to_owned()))?,
+        pay_growth: Rate::from_percent_millis(pay_growth)
+            .map_err(|_| bad("--pay-growth", "an annual rate within ±1000 %"))?,
+    })
+}
+
+/// Whether a flag of the payslip form consumes the following argument.
+fn takes_a_value(flag: &str) -> bool {
+    matches!(
+        flag,
+        "--gross"
+            | "-g"
+            | "--class"
+            | "-c"
+            | "--state"
+            | "-s"
+            | "--year"
+            | "-y"
+            | "--age"
+            | "--children"
+            | "--kvz"
+            | "--period"
+            | "-p"
+    )
 }
 
 #[cfg(test)]

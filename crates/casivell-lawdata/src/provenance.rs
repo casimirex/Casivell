@@ -19,6 +19,18 @@ pub enum DataStatus {
     Projected,
 }
 
+impl Default for DataStatus {
+    /// The *weakest* status, so a value that has not been set cannot claim to be law.
+    ///
+    /// `Enacted` would be the natural-looking default and is the wrong one: a struct
+    /// initialised with `..Default::default()` and never populated would assert that
+    /// figures nobody has checked are binding law. Defaulting to `Projected` fails in the
+    /// safe direction — the worst outcome is a warning shown where none was needed.
+    fn default() -> Self {
+        Self::Projected
+    }
+}
+
 impl DataStatus {
     /// Returns whichever of the two statuses carries less confidence.
     #[must_use]
@@ -125,6 +137,23 @@ mod tests {
             for b in all {
                 assert_eq!(a.weakest(b), b.weakest(a));
             }
+        }
+    }
+
+    /// The default must be the weakest status. A default of `Enacted` would let an
+    /// unpopulated struct assert that unchecked figures are binding law.
+    #[test]
+    fn the_default_status_never_claims_to_be_law() {
+        assert_eq!(DataStatus::default(), DataStatus::Projected);
+        assert!(!DataStatus::default().is_binding_law());
+        // And it is the absorbing element of `weakest`, so combining it with anything
+        // leaves the result non-binding.
+        for other in [
+            DataStatus::Enacted,
+            DataStatus::Draft,
+            DataStatus::Projected,
+        ] {
+            assert!(!DataStatus::default().weakest(other).is_binding_law());
         }
     }
 

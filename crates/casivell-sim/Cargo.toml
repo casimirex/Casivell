@@ -1,22 +1,17 @@
 [package]
-name = "casivell-cli"
+name = "casivell-sim"
 version = "0.1.0"
-description = "Command-line front end for the Casivell engine."
+description = "Month-by-month household projection over decades. Allocation-free and streaming."
 edition.workspace = true
 rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
-
-[[bin]]
-name = "casivell"
-path = "src/main.rs"
 
 [dependencies]
 casivell-core = { path = "../casivell-core" }
 casivell-lawdata = { path = "../casivell-lawdata" }
 casivell-payroll = { path = "../casivell-payroll" }
 casivell-projection = { path = "../casivell-projection" }
-casivell-sim = { path = "../casivell-sim" }
 casivell-social = { path = "../casivell-social" }
 
 [lints]

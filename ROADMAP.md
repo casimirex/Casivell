@@ -61,9 +61,10 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
 | `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; net pay for a month or a year. |
 | `casivell-projection` | Statutory parameters past the last enacted year, derived from explicit assumptions and marked `Projected`. |
-| `casivell-cli` | The `casivell` command: a payslip with its full derivation, and a view of the parameters for any year. The only crate using `std`. |
+| `casivell-sim` | Month-by-month household projection over decades. `#![no_std]` and streaming: one month held at a time. |
+| `casivell-cli` | The `casivell` command: a payslip, the parameters for any year, and a household projection. The only crate using `std`. |
 
-**291 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
+**355 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -218,19 +219,46 @@ The largest correctness risk in the product.
 - [ ] Kapitalerträge: Abgeltungsteuer, Sparer-Pauschbetrag
 - [ ] Tax class comparison III/V vs IV+Faktor — flagging the planned move to Faktorverfahren
 
-### Phase 3 — Simulation kernel · ~3 weeks · *unblocked, next*
+### Phase 3 — Simulation kernel ✅ *complete*
 
-- [ ] Month-by-month household projection over 40 years
-- [ ] Real vs. nominal toggle, inflation indexing
-- [ ] Monte Carlo over market returns and wage growth
-- [x] `DataStatus::Projected` for every year past the last enacted statute — done in
-      Phase 4.5; the kernel calls `casivell_projection::resolve`
+- [x] **Month-by-month projection over decades.** `casivell-sim` runs each month through
+      the same verified payroll code that produces a payslip, against the statutory
+      parameters for that year — enacted where they exist, projected beyond.
+- [x] **Allocation-free and streaming.** The engine is `#![no_std]`, so a 480-month
+      timeline cannot be returned as a `Vec`. That turned out to be the right design
+      pressure rather than an obstacle: the kernel holds one month and hands each to a
+      `Sink`. Memory is `O(1)` in the horizon, the caller decides what to keep, and Monte
+      Carlo becomes cheap instead of expensive.
+- [x] **Real versus nominal.** Deflation happens *in the kernel* and the basis is recorded
+      on every snapshot, because a consumer that cannot tell whether a figure has already
+      been deflated is a bug waiting to happen.
+- [x] **Pension accrual alongside.** Entgeltpunkte accrue month by month but are
+      recomputed from the year's contributory income to date, so a full year lands exactly
+      on the annual figure rather than twelve roundings away from it.
+- [x] **Monte Carlo** over investment returns, bootstrapped from a caller-supplied set,
+      with a deterministic PRNG written here so the same seed reproduces the same paths
+      forever.
+- [x] A `project` CLI form, so the kernel is inspectable rather than invisible.
 
-**Performance:** 10 000 paths × 480 months is 4.8 M month-steps — tens of
-milliseconds single-threaded for a lean integer kernel. Threading needs
-`SharedArrayBuffer` and therefore COOP/COEP headers; deliverable on Cloudflare
-Pages via `_headers`, but it breaks some embedding contexts. Ship single-threaded
-first and measure before paying that cost.
+**Two findings the kernel surfaced.**
+
+A household whose nominal pay never rises accrues about **25.5 Entgeltpunkte** over forty
+years against about **41.6** for pay that tracks average wages — a pension roughly
+two-fifths smaller, from a decision that never appears on a payslip. Entgeltpunkte are a
+*ratio* to the national average, so standing still means falling behind. This is why the
+household's own pay growth is a separate input from the statutory wage-growth assumption;
+one rate for both could not show it.
+
+And the 1 900 € cap on the Vorsorgepauschale is nominal and unindexed, so a projection
+shows it binding on steadily more people as wages grow. Held constant deliberately, and
+documented as a substantive assumption rather than a neutral one.
+
+**Not implemented, and refused rather than approximated:** no historical return table
+ships with Casivell. Market data has its own provenance problem — "MSCI World 1970–2025"
+is a licensing question before it is an engineering one — and inventing a plausible series
+would be the exact failure the errata records. `monte_carlo` therefore requires the caller
+to supply the returns. Block bootstrapping, which would capture serial correlation that
+independent draws miss, is also absent and stated.
 
 ### Phase 4 — Persistence and scenarios · ~3 weeks
 
@@ -277,9 +305,13 @@ Casivell refuses rather than returning nonsense. At the default 2 % that happens
 **2096** — seventy years out, well past any household horizon, and the refusal is
 itself the model saying a frozen Reichensteuer threshold cannot hold indefinitely.
 
-**Not projected:** `PayrollParameters`. The Programmablaufplan is an annual
-administrative instrument, not a formula, and payroll withholding for 2055 is not a
-question a household projection asks — it wants the annual assessment.
+**Reversed in Phase 3:** `PayrollParameters` *is* now projected. The original reasoning —
+that a projection wants the annual assessment rather than payroll withholding — ignored
+that the annual assessment needs a zvE, which is not implemented. So the real choice was
+between projecting the PAP's parameters and inventing a simplified zvE of our own.
+Withholding is the statute's own approximation of the annual liability and is verified
+against 516 official values; an invented simplification would have been a plausible figure
+with nothing behind it. The PAP's *structure* is still not projected — only its numbers.
 
 ### Phase 5 — UI · ~5 weeks
 

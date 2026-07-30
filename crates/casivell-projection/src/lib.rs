@@ -59,12 +59,19 @@
 //! eight published coefficients exactly at the statute's two decimal places. A method
 //! that reproduces two enacted years is a reasonable basis for a third.
 //!
-//! # What this crate does not project
+//! # The Programmablaufplan, and a reversed decision
 //!
-//! `PayrollParameters` — the BMF Programmablaufplan. The PAP is reissued annually as
-//! an administrative instrument, and payroll withholding for 2055 is not a question a
-//! household projection asks; it wants the annual assessment. Projecting it would
-//! invite exactly the false precision this crate exists to avoid.
+//! An earlier version of this crate declined to project `PayrollParameters`, arguing
+//! that a household projection wants the annual assessment rather than payroll
+//! withholding. That was wrong, and [`payroll`] documents why: the annual assessment
+//! needs a *zu versteuerndes Einkommen*, which is not implemented, so the real choice
+//! was between projecting the PAP's parameters and inventing a simplified zvE model of
+//! our own. Withholding is the statute's own approximation of the annual liability and is
+//! verified against 516 official values; an invented simplification would have been a
+//! plausible figure with nothing behind it.
+//!
+//! What is *not* projected is the PAP's **structure**: its branches and rounding points
+//! are taken as they stand in 2026. Only the numbers move.
 
 #![no_std]
 #![forbid(unsafe_code)]
@@ -84,12 +91,14 @@
 pub mod assumptions;
 pub mod growth;
 pub mod parameters;
+pub mod payroll;
 pub mod tariff;
 
 use casivell_core::{MoneyError, TaxYear};
 use casivell_lawdata::LawYear;
 
 pub use assumptions::Assumptions;
+pub use payroll::project_payroll;
 
 /// Anything that can prevent a projection.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

@@ -10,6 +10,7 @@ dependencies = [
  "casivell-lawdata",
  "casivell-payroll",
  "casivell-projection",
+ "casivell-sim",
  "casivell-social",
 ]
 
@@ -40,6 +41,17 @@ version = "0.1.0"
 dependencies = [
  "casivell-core",
  "casivell-lawdata",
+]
+
+[[package]]
+name = "casivell-sim"
+version = "0.1.0"
+dependencies = [
+ "casivell-core",
+ "casivell-lawdata",
+ "casivell-payroll",
+ "casivell-projection",
+ "casivell-social",
 ]
 
 [[package]]

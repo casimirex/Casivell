@@ -10,10 +10,10 @@ can we afford a year off?*
 Your financial data stays on your device. There is no network code path below the
 UI layer.
 
-> **Status: early.** The calculation engine is built and tested, statutory parameters
-> can be projected past the last enacted year, and there is a working CLI. There is no
-> graphical interface yet and no simulation kernel — see [ROADMAP.md](ROADMAP.md) for
-> what exists and what comes next.
+> **Status: early.** The calculation engine is built and tested, statutory parameters can
+> be projected past the last enacted year, decades-long household projections run, and
+> there is a working CLI. There is no graphical interface and no persistence yet — see
+> [ROADMAP.md](ROADMAP.md) for what exists and what comes next.
 
 ---
 
@@ -45,6 +45,7 @@ crates/
 ├── casivell-social/    Social insurance contributions, pension entitlement
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
+├── casivell-sim/       Month-by-month household projection, streaming
 └── casivell-cli/       The `casivell` command — the only crate that uses std
 ```
 
@@ -121,6 +122,27 @@ That last pair is the model earning its keep: the 45 % threshold has not been in
 since 2007, so a projection shows it being overtaken. Push far enough and the tariff
 stops being well formed — which Casivell refuses rather than papering over.
 
+And a household can be projected forward, month by month, for decades:
+
+```sh
+cargo run -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 \
+    --pay-growth 2,8 --return 5,0 --real
+```
+
+```
+  Year   Gross/mo      Net/mo   Saved/mo        Wealth    Points   Pension/mo
+  ──────────────────────────────────────────────────────────────────────────
+  2026   4.500,00    2.871,09     371,09      4.556,58      1,04        44,20
+  ┈┈┈┈┈┈┈┈  enacted law ends here; rows below are projected
+  2027   4.535,29    2.889,65     389,65      9.480,25      2,08        89,10
+  ...
+  2065   6.102,90    3.677,94   1.177,95    637.114,68     41,58     2.397,65
+```
+
+Every month runs the same verified payroll code that produces a payslip, against the
+statutory parameters for that year. The row where enacted law ends is marked rather than
+footnoted.
+
 ---
 
 ## Build
@@ -129,7 +151,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 291 tests
+cargo test --workspace                                        # 355 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -195,6 +217,10 @@ The mechanisms that came out of it:
   its Eckwerte, and the derivation reproduces **all eight published coefficients** for
   both enacted years exactly. Nothing past the last statute can be obtained without
   passing explicit assumptions, and everything so obtained reports itself as projected.
+- The simulation kernel is `#![no_std]` and **streams**: it holds one month at a time and
+  hands each to a sink. A forty-year run is `O(1)` in memory, and ten thousand Monte Carlo
+  paths cost no more than one. `Vec` appearing outside a test module would mean the design
+  had been abandoned.
 - Where a result is knowably incomplete, the type says so:
   `ChurchTaxResult::base_is_exact` is `false` for households with children, because
   § 51a Abs. 2 EStG is not yet implemented.
