@@ -12,23 +12,25 @@
 //! [`casivell_social::Insured`] the contributions are computed from, so a person
 //! cannot be childless for tax and a parent for insurance.
 
-use casivell_core::{Money, MoneyError};
+use casivell_core::{Money, MoneyError, Rounding};
 use casivell_social::{SocialContributions, contributions};
 
 use crate::withholding::{Employment, PayPeriod, PayrollLaw, Withholding, withhold};
 
-/// A month's pay, fully decomposed.
+/// One pay period, fully decomposed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct NetPay {
-    /// Gross pay for the month.
+    /// Gross pay for the period.
     pub gross: Money,
+    /// The period these figures cover.
+    pub period: PayPeriod,
     /// Lohnsteuer withheld.
     pub income_tax: Money,
     /// Solidaritätszuschlag withheld.
     pub solidarity_surcharge: Money,
     /// Church tax withheld.
     pub church_tax: Money,
-    /// The employee's social insurance contributions.
+    /// The employee's social insurance contributions for the period.
     pub employee_contributions: Money,
     /// What reaches the employee's account.
     pub net: Money,
@@ -43,8 +45,13 @@ pub struct NetPay {
     pub employer_cost: Money,
     /// The full withholding calculation, for inspection.
     pub withholding: Withholding,
-    /// The full contribution calculation, for inspection.
-    pub contributions: SocialContributions,
+    /// The per-branch contribution breakdown, **always for one month**.
+    ///
+    /// Named for its unit because it does not follow [`Self::period`]: social
+    /// insurance ceilings are monthly, so the monthly figure is the true unit and an
+    /// annual view is twelve of them. A caller rendering an annual report must scale
+    /// this by [`PayPeriod::periods_per_year`]; the totals above are already scaled.
+    pub monthly_contributions: SocialContributions,
 }
 
 impl NetPay {
@@ -66,23 +73,45 @@ impl NetPay {
     }
 }
 
-/// Computes one month's net pay from gross.
+/// Computes net pay for one pay period.
+///
+/// `gross` is the pay for `period`. Withholding is computed on that figure directly,
+/// so the Lohnsteuer for an annual request is exact.
+///
+/// # Contributions over an annual period
+///
+/// Social insurance ceilings are *monthly* (§ 223 SGB V and its counterparts), so
+/// contributions are properly computed month by month and summed. For an annual
+/// request this function therefore derives a monthly figure, computes contributions
+/// on it, and scales the result back up.
+///
+/// That introduces one small artefact: an annual gross that does not divide evenly
+/// by twelve loses up to eleven cents from the *contribution base*. `55 000 €` a year
+/// becomes twelve months of `4 583,33 €`, a base of `54 999,96 €`. The effect on the
+/// contribution is under a cent per branch, and real payroll has the same problem —
+/// it is a consequence of monthly ceilings, not an approximation on our part.
+///
+/// Net is computed by subtracting from the true `gross`, not from the reconstructed
+/// twelve months, so `net + deductions == gross` holds exactly regardless.
 ///
 /// # Errors
 ///
 /// [`MoneyError`] if an intermediate leaves the representable domain.
-pub fn monthly_net(
-    monthly_gross: Money,
+pub fn net_pay(
+    gross: Money,
+    period: PayPeriod,
     employment: &Employment,
     law: &PayrollLaw,
 ) -> Result<NetPay, MoneyError> {
-    let gross = monthly_gross.floor_at_zero();
+    let gross = gross.floor_at_zero();
+    let withholding = withhold(gross, period, employment, law)?;
 
-    let withholding = withhold(gross, PayPeriod::Month, employment, law)?;
-    let contributions = contributions(gross, &law.social, &employment.insured)?;
-
-    let employee_contributions = contributions.employee_total()?;
-    let employer_contributions = contributions.employer_total()?;
+    // Contributions are levied monthly against monthly ceilings.
+    let months = period.months();
+    let monthly_gross = gross.div_int(months, Rounding::Floor)?;
+    let contributions = contributions(monthly_gross, &law.social, &employment.insured)?;
+    let employee_contributions = contributions.employee_total()?.mul_int(months)?;
+    let employer_contributions = contributions.employer_total()?.mul_int(months)?;
 
     let deductions = withholding
         .income_tax
@@ -92,19 +121,33 @@ pub fn monthly_net(
 
     Ok(NetPay {
         gross,
+        period,
         income_tax: withholding.income_tax,
         solidarity_surcharge: withholding.solidarity_surcharge,
         church_tax: withholding.church_tax,
         employee_contributions,
-        // Net can in principle go negative only for contrived inputs; the
-        // subtraction is left unclamped so that such a case is visible rather than
-        // silently floored at zero.
+        // Subtracted from the true gross, so the decomposition always reconciles.
         net: gross.sub(deductions)?,
         employer_contributions,
         employer_cost: gross.add(employer_contributions)?,
-        contributions,
+        monthly_contributions: contributions,
         withholding,
     })
+}
+
+/// Computes one month's net pay from gross.
+///
+/// A thin wrapper over [`net_pay`] for the commonest case.
+///
+/// # Errors
+///
+/// [`MoneyError`] if an intermediate leaves the representable domain.
+pub fn monthly_net(
+    monthly_gross: Money,
+    employment: &Employment,
+    law: &PayrollLaw,
+) -> Result<NetPay, MoneyError> {
+    net_pay(monthly_gross, PayPeriod::Month, employment, law)
 }
 
 #[cfg(test)]

@@ -84,6 +84,22 @@ impl PayPeriod {
         }
     }
 
+    /// How many calendar months this period spans.
+    ///
+    /// The inverse of [`Self::periods_per_year`], and a distinct quantity: a year is
+    /// *one* period per year but spans *twelve* months. Social insurance ceilings are
+    /// monthly, so scaling a contribution to a period needs this and not the other.
+    /// Both exist as named methods because using the wrong one is an easy mistake
+    /// that produces plausible-looking figures — it did, once, in the CLI's
+    /// per-branch percentages.
+    #[must_use]
+    pub const fn months(self) -> i64 {
+        match self {
+            Self::Year => 12,
+            Self::Month => 1,
+        }
+    }
+
     /// `MRE4JL`: scales a period amount up to an annual one.
     ///
     /// # Errors

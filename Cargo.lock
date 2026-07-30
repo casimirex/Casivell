@@ -3,6 +3,16 @@
 version = 4
 
 [[package]]
+name = "casivell-cli"
+version = "0.1.0"
+dependencies = [
+ "casivell-core",
+ "casivell-lawdata",
+ "casivell-payroll",
+ "casivell-social",
+]
+
+[[package]]
 name = "casivell-core"
 version = "0.1.0"
 

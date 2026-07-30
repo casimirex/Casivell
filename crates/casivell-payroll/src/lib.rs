@@ -73,7 +73,7 @@
 pub mod net;
 pub mod withholding;
 
-pub use net::{NetPay, monthly_net};
+pub use net::{NetPay, monthly_net, net_pay};
 pub use withholding::{
     CareStatus, Employment, HealthCover, PayPeriod, PayrollLaw, Withholding, withhold,
 };

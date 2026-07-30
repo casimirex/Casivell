@@ -10,9 +10,9 @@ can we afford a year off?*
 Your financial data stays on your device. There is no network code path below the
 UI layer.
 
-> **Status: early.** The calculation engine's foundation is built and tested. There
-> is no user interface yet. See [ROADMAP.md](ROADMAP.md) for what exists and what
-> comes next.
+> **Status: early.** The calculation engine is built and tested, and there is a
+> working CLI. There is no graphical interface yet, and no multi-year projection —
+> see [ROADMAP.md](ROADMAP.md) for what exists and what comes next.
 
 ---
 
@@ -42,15 +42,59 @@ crates/
 ├── casivell-lawdata/   Year-keyed statutory tables, every figure cited
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
 ├── casivell-social/    Social insurance contributions, pension entitlement
-└── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
+├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
+└── casivell-cli/       The `casivell` command — the only crate that uses std
 ```
 
 The dependency direction is the design: `core` knows nothing of German law;
 `lawdata` holds law but performs no calculation; calculation crates hold no
 statutory constants. Each layer can be reviewed on its own.
 
-All five are `#![no_std]` and `#![forbid(unsafe_code)]`. Zero third-party
-dependencies.
+Every engine crate is `#![no_std]` and `#![forbid(unsafe_code)]`. `casivell-cli` is
+the only crate that uses `std`, and that boundary is what keeps the guarantee that
+the calculation layer cannot allocate or open a socket. Zero third-party
+dependencies, throughout.
+
+---
+
+## Try it
+
+```sh
+cargo run -p casivell-cli -- --gross 4500 --class 1
+```
+
+```
+Casivell — Lohnabrechnung
+  2026 · Steuerklasse I · NW · monthly
+
+  Bruttoentgelt                                     4.500,00 €
+
+  Steuern
+    Lohnsteuer                                       -650,16 €
+    Solidaritätszuschlag                                0,00 €
+
+  Sozialversicherung (Arbeitnehmeranteil)
+    Rentenversicherung          9,30 %               -418,50 €
+    Arbeitslosenversicherung    1,30 %                -58,50 €
+    Krankenversicherung         8,75 %               -393,75 €
+    Pflegeversicherung          2,40 %               -108,00 €
+    Summe                                            -978,75 €
+
+  ────────────────────────────────────────────────────────────
+  Nettoentgelt                                      2.871,09 €
+  (63,80 % of gross)
+
+  Wie die Lohnsteuer ermittelt wurde (§ 39b EStG, BMF-PAP 2026)
+    Jahresarbeitslohn (ZRE4)                        54.000,00 €
+    − Tabellenfreibeträge (ZTABFB)                  -1.266,00 €
+    − Vorsorgepauschale (VSP)                      -10.881,00 €
+    = zu versteuernder Betrag (ZVE)                 41.853,00 €
+    Jahreslohnsteuer (LSTJAHR)                       7.802,00 €
+    ÷ 12 = Lohnsteuer im Monat                        650,16 €
+```
+
+Every figure is traceable to the rule that produced it, and the report states its
+own assumptions and limits. `--help` lists the options.
 
 ---
 
@@ -60,7 +104,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 208 tests
+cargo test --workspace                                        # 238 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2

@@ -59,9 +59,10 @@ Implemented, tested, and clippy-clean at `pedantic` with `-D warnings`:
 | `casivell-lawdata` | Year-keyed statutory tables for 2025 and 2026, each with a `Provenance`. Income tax tariff, pension, unemployment, health, care, Soli, church tax, retirement ages, all 16 Bundesländer. |
 | `casivell-tax` | § 32a EStG tariff incl. Splittingverfahren, Solidaritätszuschlag incl. Milderungszone, church tax. |
 | `casivell-social` | All four branches of social insurance with employee/employer incidence; Entgeltpunkte accrual; Zugangsfaktor; monthly pension. |
-| `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; gross-to-net. |
+| `casivell-payroll` | Lohnsteuer per the BMF Programmablaufplan 2026, incl. the full Vorsorgepauschale and the class V/VI formula; Soli; church tax on the § 51a base; net pay for a month or a year. |
+| `casivell-cli` | The `casivell` command: a payslip with its full derivation and stated limits. The only crate using `std`. |
 
-**208 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
+**238 tests pass**, including all **516 values of the official BMF Prüftabellen**. The engine builds for `wasm32-unknown-unknown` and has zero
 third-party dependencies.
 
 Verified against primary sources: [§ 32a EStG](https://www.gesetze-im-internet.de/estg/__32a.html),
@@ -232,9 +233,29 @@ first and measure before paying that cost.
 - [ ] Scenario DAG: fork, compare, diff
 - [ ] Export/import JSON; encryption at rest via `SubtleCrypto`
 
+### Phase 4.5 — Projected law years · ~1 week · *next*
+
+**This is the blocker for everything in Phase 3.** `TaxYear::MAX` is 2026, so
+`LawYear::for_year(2027)` returns `YearOutOfRange` *by design* — a 40-year projection
+cannot run at all today. That refusal is correct, and the fix is not to widen the
+range but to make extrapolation explicit:
+
+- [ ] A `ProjectedLawYear` that derives parameters beyond the last enacted year from
+      named, user-editable assumptions — price inflation for the Grundfreibetrag and
+      the tariff Eckwerte, wage growth for the contribution ceilings and the
+      Durchschnittsentgelt, the § 68 SGB VI formula for the Rentenwert.
+- [ ] Every such year carries `DataStatus::Projected`, so `LawYear::status()` already
+      propagates it to any result computed from it — the machinery exists and is
+      untested against a real projection.
+- [ ] The assumptions are inputs, never hidden constants. See §10 item 3.
+
+Doing this before Phase 3 rather than during it keeps the enacted/projected
+distinction a type-level property instead of a convention.
+
 ### Phase 5 — UI · ~5 weeks
 
-- [ ] Input flows for household, income, expenses
+- [ ] Input flows for household, income, expenses (the CLI is the reference for what
+      the inputs mean)
 - [ ] Timeline visualisation; scenario comparison
 - [ ] **Explainability view** — click any figure, see the rule and provision that produced it
 - [ ] Inexactness and `Projected` status shown inline, never buried
