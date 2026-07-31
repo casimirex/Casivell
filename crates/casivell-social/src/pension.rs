@@ -141,6 +141,59 @@ impl EntgeltPoints {
         let micro = div_round_half_up(scaled, pension.average_earnings_annual.cents())?;
         Self::from_micro(micro)
     }
+
+    /// § 70 Abs. 2 SGB VI: the credit for `months` of Kindererziehungszeit.
+    ///
+    /// Each month is worth a flat 0,0833 points — the statute's own figure, to four decimal
+    /// places rather than an exact twelfth. A full year of it credits **0,9996** points, not
+    /// one, and the three years of a single child credit 2,9988. Rounding that to a round
+    /// number would be tidier and wrong.
+    ///
+    /// # Errors
+    ///
+    /// [`MoneyError`] if the result leaves the representable range.
+    pub const fn child_raising(
+        months: u32,
+        pension: &PensionInsurance,
+    ) -> Result<Self, MoneyError> {
+        let Some(micro) = pension
+            .child_raising_points_micro
+            .checked_mul(months as i64)
+        else {
+            return Err(MoneyError::Overflow);
+        };
+        Self::from_micro(micro)
+    }
+
+    /// The most Entgeltpunkte a single year can yield, from any combination of sources.
+    ///
+    /// § 70 Abs. 2 Satz 2 caps the sum of employment and Kindererziehungszeit points at the
+    /// Höchstwerte of Anlage 2b. That annex stops at 2002, because from then on the ceiling is
+    /// simply what a full-Beitragsbemessungsgrenze earner accrues — so the cap is *derived*
+    /// from the contribution ceiling and the Durchschnittsentgelt rather than transcribed from
+    /// a table that no longer runs.
+    ///
+    /// Around 2,0 points in a modern year: the ceiling is about twice average earnings.
+    ///
+    /// # Errors
+    ///
+    /// [`MoneyError`] on a domain violation.
+    pub fn annual_maximum(pension: &PensionInsurance) -> Result<Self, MoneyError> {
+        let ceiling_annual = pension
+            .ceiling_monthly
+            .mul_int(i64::from(MONTHS_PER_YEAR))?;
+        Self::accrued_in_year(ceiling_annual, pension)
+    }
+
+    /// The smaller of two quantities.
+    #[must_use]
+    pub const fn min(self, other: Self) -> Self {
+        if self.micro <= other.micro {
+            self
+        } else {
+            other
+        }
+    }
 }
 
 /// The Zugangsfaktor for a pension claimed `months_offset` months from the

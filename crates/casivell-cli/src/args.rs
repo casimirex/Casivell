@@ -439,7 +439,8 @@ where
             | "--raise"
             | "--one-off"
             | "--parental-leave"
-            | "--parental-leave-plus" => {
+            | "--parental-leave-plus"
+            | "--child-born" => {
                 parse_event_flag(&flag, &mut iter, &mut schedule)?;
             }
             other => {
@@ -510,6 +511,15 @@ where
                 from_month,
                 monthly_gross,
             }
+        }
+        "--child-born" => {
+            let raw = next_value(flag, iter)?;
+            let month = years_to_months(&raw).ok_or_else(|| ArgError::BadValue {
+                flag: flag.to_owned(),
+                value: raw.clone(),
+                expected: "a year offset into the projection, e.g. 2".to_owned(),
+            })?;
+            Event::ChildBorn { month }
         }
         "--parental-leave" | "--parental-leave-plus" => {
             // `FROM:MONTHS[:PERCENT]` — months rather than years, because parental leave is

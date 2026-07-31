@@ -313,6 +313,11 @@ struct State {
     /// Contributory income so far this calendar year, for the annual Entgeltpunkte
     /// calculation.
     contributory_this_year: Money,
+    /// Months of Kindererziehungszeit falling in this calendar year.
+    ///
+    /// Counted per year for the same reason contributory income is: § 70 Abs. 2 caps the
+    /// *year's* combined points, so the two must be summed before the cap is applied.
+    child_raising_months_this_year: u32,
     /// This calendar year's income and withholding, for the annual assessment.
     tally: YearTally,
     /// The Elterngeld in payment, fixed at the first month of a leave.
@@ -339,6 +344,7 @@ impl State {
             monthly_gross: household.monthly_gross,
             monthly_expenses: household.monthly_expenses,
             contributory_this_year: Money::ZERO,
+            child_raising_months_this_year: 0,
             tally: YearTally::new(household.start_year.get()),
             elterngeld: None,
             last_assessed_income: None,
@@ -411,7 +417,14 @@ pub fn simulate<S: Sink>(
         // A settlement assessed some months ago reaches the household now.
         let settlement = state.settlement_due(month_index);
 
-        accrue_pension(&mut state, &pay, law)?;
+        accrue_pension(
+            &mut state,
+            &pay,
+            law,
+            household
+                .schedule
+                .child_raising_active(month_index, law.social.pension.child_raising_months),
+        )?;
         let (investment_return, savings) =
             advance_wealth(&mut state, &pay, &inputs, benefit, settlement, config)?;
 
@@ -582,6 +595,7 @@ fn close_year(
     // two coincide; for one starting in July they do not, and resetting on the anniversary
     // would accrue points over a July-to-June window the statute knows nothing about.
     state.contributory_this_year = Money::ZERO;
+    state.child_raising_months_this_year = 0;
     state.tally = YearTally::new(calendar_year_of(state.tally.year).saturating_add(1));
     Ok(())
 }
@@ -667,16 +681,19 @@ fn accrue_pension(
     state: &mut State,
     pay: &NetPay,
     law: &PayrollLaw,
+    child_raising: bool,
 ) -> Result<(), SimulationError> {
     let contributory = pay.monthly_contributions.pension_base;
-    let before = EntgeltPoints::accrued_in_year(state.contributory_this_year, &law.social.pension)
-        .map_err(SimulationError::Arithmetic)?;
+    let before = year_points(state, law)?;
     state.contributory_this_year = state
         .contributory_this_year
         .add(contributory)
         .map_err(SimulationError::Arithmetic)?;
-    let after = EntgeltPoints::accrued_in_year(state.contributory_this_year, &law.social.pension)
-        .map_err(SimulationError::Arithmetic)?;
+    if child_raising {
+        state.child_raising_months_this_year =
+            state.child_raising_months_this_year.saturating_add(1);
+    }
+    let after = year_points(state, law)?;
 
     let gained = EntgeltPoints::from_micro(after.micro().saturating_sub(before.micro()))
         .map_err(SimulationError::Arithmetic)?;
@@ -685,6 +702,31 @@ fn accrue_pension(
         .add(gained)
         .map_err(SimulationError::Arithmetic)?;
     Ok(())
+}
+
+/// The year's Entgeltpunkte so far: employment plus Kindererziehungszeit, capped.
+///
+/// § 70 Abs. 2 Satz 2 caps the *combined* figure, which is why the two are summed here rather
+/// than accrued separately. The cap binds for a parent already earning near the contribution
+/// ceiling: their child-raising credit is worth little or nothing, while a parent on a modest
+/// salary receives it in full. That is the provision working as intended — it protects the
+/// people who gave up income, not the people who did not.
+fn year_points(state: &State, law: &PayrollLaw) -> Result<EntgeltPoints, SimulationError> {
+    let employment =
+        EntgeltPoints::accrued_in_year(state.contributory_this_year, &law.social.pension)
+            .map_err(SimulationError::Arithmetic)?;
+    if state.child_raising_months_this_year == 0 {
+        return Ok(employment);
+    }
+    let credit =
+        EntgeltPoints::child_raising(state.child_raising_months_this_year, &law.social.pension)
+            .map_err(SimulationError::Arithmetic)?;
+    let combined = employment
+        .add(credit)
+        .map_err(SimulationError::Arithmetic)?;
+    let maximum =
+        EntgeltPoints::annual_maximum(&law.social.pension).map_err(SimulationError::Arithmetic)?;
+    Ok(combined.min(maximum))
 }
 
 /// Credits investment return, then applies the month's savings.

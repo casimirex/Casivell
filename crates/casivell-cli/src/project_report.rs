@@ -182,13 +182,46 @@ fn write_events(out: &mut String, household: &Household) -> Result<(), MoneyErro
 
 /// One line describing a scheduled event, in calendar years rather than month offsets.
 fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
-    let year = |month: u32| start_year.saturating_add(u16::try_from(month / 12).unwrap_or(0));
-    let span = |from: u32, until: Option<u32>| match until {
-        Some(end) => format!("{} to {}", year(from), year(end)),
-        None => format!("{} onward", year(from)),
-    };
+    match *event {
+        Event::OtherIncome { .. } | Event::WorkingTime { .. } | Event::UnpaidLeave { .. } => {
+            describe_window(event, start_year)
+        }
+        Event::ParentalLeave {
+            from_month,
+            months,
+            working_fraction,
+            variant,
+            ..
+        } => describe_leave(from_month, months, working_fraction, variant, start_year),
+        _ => describe_moment(event, start_year),
+    }
+}
 
+/// The calendar year `month` months into a projection starting in `start_year`.
+fn year_of(month: u32, start_year: u16) -> u16 {
+    start_year.saturating_add(u16::try_from(month / 12).unwrap_or(0))
+}
+
+/// Events that run over a window of months.
+fn describe_window(event: &Event, start_year: u16) -> Result<String, MoneyError> {
+    let span = |from: u32, until: Option<u32>| match until {
+        Some(end) => format!(
+            "{} to {}",
+            year_of(from, start_year),
+            year_of(end, start_year)
+        ),
+        None => format!("{} onward", year_of(from, start_year)),
+    };
     Ok(match *event {
+        Event::OtherIncome {
+            from_month,
+            until_month,
+            monthly_amount,
+        } => format!(
+            "{}: other income of {} €/month, no contributions",
+            span(from_month, until_month),
+            euro(monthly_amount)?
+        ),
         Event::WorkingTime {
             from_month,
             until_month,
@@ -205,6 +238,15 @@ fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
             "{}: unpaid leave, no employment income",
             span(from_month, until_month)
         ),
+        // Unreachable: `describe` routes only the three windowed variants here.
+        _ => String::new(),
+    })
+}
+
+/// Events that happen at a single month.
+fn describe_moment(event: &Event, start_year: u16) -> Result<String, MoneyError> {
+    let year = |month: u32| year_of(month, start_year);
+    Ok(match *event {
         Event::PayChange {
             from_month,
             monthly_gross,
@@ -226,22 +268,12 @@ fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
             year(month),
             euro(amount)?
         ),
-        Event::ParentalLeave {
-            from_month,
-            months,
-            working_fraction,
-            variant,
-            ..
-        } => describe_leave(from_month, months, working_fraction, variant, start_year)?,
-        Event::OtherIncome {
-            from_month,
-            until_month,
-            monthly_amount,
-        } => format!(
-            "{}: other income of {} €/month, no contributions",
-            span(from_month, until_month),
-            euro(monthly_amount)?
+        Event::ChildBorn { month } => format!(
+            "{}: a child is born; Kindererziehungszeit follows (§ 56 SGB VI)",
+            year(month)
         ),
+        // Unreachable: `describe` routes the windowed and leave variants elsewhere.
+        _ => String::new(),
     })
 }
 
@@ -352,9 +384,12 @@ fn write_leave_notes(out: &mut String, household: &Household) {
     );
     let _ = writeln!(
         out,
-        "  · Kindererziehungszeiten (§ 56 SGB VI) are not modelled, so the pension cost"
+        "  · Kindererziehungszeit is credited only where --child-born says a child arrived;"
     );
-    let _ = writeln!(out, "    of the leave is overstated.");
+    let _ = writeln!(
+        out,
+        "    parental leave alone does not imply one, since either can occur without the other."
+    );
 }
 
 /// Formats Entgeltpunkte with two decimals, as the DRV reports them.

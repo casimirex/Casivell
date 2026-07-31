@@ -434,6 +434,32 @@ nothing on any payslip in between to warn of it.
 mid-year, so simply returning from part-time produces a demand of its own, with no § 32b
 involved. The control in that test had to become quantitative rather than a sign test.
 
+**Kindererziehungszeiten, and the pessimism they removed.** Casivell exists in part to show
+what a career break costs a pension, and until now it showed a break with *no* credit at
+all — overstating the harm in the one place the model most needed to be even-handed.
+
+The correction is larger than "softens it". The credit is pegged to **average earnings**, not
+to the parent's own salary, so for someone below average it is worth more than the entitlement
+they gave up: a parent on 3 000 € a month taking two years out ends up with *more*
+entitlement than one who never stopped. A model without it told exactly those households the
+opposite.
+
+§ 70 Abs. 2 caps the year's combined points at what a full-ceiling earner accrues, which cuts
+the other way and equally deliberately: a parent already at the Beitragsbemessungsgrenze gets
+**nothing** from the credit, because their salary alone is already at the cap. The provision
+protects the people who gave up income and not the people who did not. It looks like a defect
+until you see which way it points, so it has its own test saying so.
+
+§ 56 Abs. 5 *extends* rather than overlaps — a second child born during the first's period
+pushes it later instead of running two in parallel, so a parent never earns two children's
+credit in one month. Modelled by queueing the windows, which reproduces the extension exactly
+and reduces to plain thirty-six months apiece for well-spaced children.
+
+Anlage 2b, which § 70 Abs. 2 points at for the cap, stops at 2002. From then on the ceiling is
+simply what a full-Beitragsbemessungsgrenze earner accrues, so the cap is **derived** from the
+contribution ceiling and the Durchschnittsentgelt rather than transcribed from a table that no
+longer runs.
+
 **Elterngeld is unindexed, and the projection says so.** The 1 800 € cap and the 300 € floor
 have stood since 2007 and § 2 gives no adjustment rule of any kind, so `carry_forward_benefits`
 holds them fixed — which is the *accurate* projection, not the lazy one. A long horizon shows
@@ -483,10 +509,11 @@ of two indexed statutory series meeting a household that stood still.
       clamp, § 2a's bonuses, `ElterngeldPlus`, and the § 1 Abs. 8 income cliff — and
       `Event::ParentalLeave` pays it monthly while carrying it into the annual assessment as
       a § 32b benefit. Both halves, because either alone misleads.
-- [ ] **Kindererziehungszeiten** (§ 56 SGB VI): thirty-six months of pension credit after a
-      birth, worth about one Entgeltpunkt a year. Its absence makes the projection
-      **overstate** the pension cost of taking leave — the one place the model is currently
-      pessimistic rather than neutral, and the next thing to fix.
+- [x] **Kindererziehungszeiten** (§§ 56, 70 Abs. 2 SGB VI): thirty-six months of pension
+      credit from the month after a birth, at the statute's own 0,0833 points a month —
+      2,9988 for a child, not a round three. `Event::ChildBorn` is separate from
+      `Event::ParentalLeave` because § 56 credits whoever *raises* the child, so a parent
+      back at work the next month keeps every month of it.
 - [ ] Kita costs, which are municipal rather than statutory and have no national table.
 - [ ] Buy versus rent: needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
       amortisation. The deposit and the payment can be modelled today with `--one-off` and an

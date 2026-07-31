@@ -81,6 +81,7 @@ PROJECT OPTIONS
       --break <spec>      Unpaid leave, FROM:UNTIL in years, e.g. 5:6
       --raise <spec>      YEAR:AMOUNT, e.g. 15:8000
       --one-off <spec>    YEAR:AMOUNT, e.g. 5:-60000 for a deposit
+      --child-born <year>           A birth; credits Kindererziehungszeit
       --parental-leave <spec>       FROM:MONTHS[:PERCENT], e.g. 2:14 or 2:14:50
       --parental-leave-plus <spec>  The same, drawing ElterngeldPlus
       --years <n>         Horizon in years (default 40, max 70)
@@ -101,7 +102,7 @@ EXAMPLES
   casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
   casivell project --gross 4500 --class 1 --expenses 2500 --part-time 3:8:60
   casivell project --gross 4500 --class 1 --expenses 2500 --break 5:6 --raise 15:8000
-  casivell project --gross 4000 --class 1 --expenses 1800 --parental-leave 2:14
+  casivell project --gross 4000 --class 1 --expenses 1800 --child-born 2 --parental-leave 2:14
   casivell --gross 3200 --class 3 --state BY --children 2 --church
   casivell --gross 72000 --period year --class 1 --kvz 1,7
 

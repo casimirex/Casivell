@@ -117,6 +117,26 @@ pub enum Event {
         amount: Money,
     },
 
+    /// A child is born.
+    ///
+    /// Distinct from [`Event::ParentalLeave`], and deliberately so: § 56 SGB VI credits
+    /// Kindererziehungszeiten to whoever *raises* the child, whether or not they stop working.
+    /// A parent who returns to work the following month still receives all thirty-six months
+    /// of credit, so deriving the credit from a leave would deny it to exactly the households
+    /// that took none.
+    ///
+    /// # What this changes and what it does not
+    ///
+    /// It credits pension entitlement, and nothing else. Kindergeld, the Kinderfreibetrag and
+    /// the care-insurance child reductions are still static properties of the employment
+    /// rather than things a birth switches on — so a projection wanting those must set them
+    /// there as well. Stated because a `ChildBorn` event that silently did only a third of
+    /// what its name suggests would be worse than one that says so.
+    ChildBorn {
+        /// The month of the birth. The Kindererziehungszeit begins the month *after*.
+        month: u32,
+    },
+
     /// Parental leave with Elterngeld, for a number of Lebensmonate.
     ///
     /// The one event whose payment the kernel computes rather than being told: the amount
@@ -195,7 +215,7 @@ impl Event {
             | Self::ExpenseChange { from_month, .. }
             | Self::ParentalLeave { from_month, .. }
             | Self::OtherIncome { from_month, .. } => from_month,
-            Self::OneOff { month, .. } => month,
+            Self::OneOff { month, .. } | Self::ChildBorn { month, .. } => month,
         }
     }
 
@@ -207,7 +227,10 @@ impl Event {
             return false;
         }
         match *self {
-            Self::OneOff { month, .. } => month_index == month,
+            // Both are instants. A birth's Kindererziehungszeit is a separate question that
+            // `Schedule::child_raising_active` answers, because § 56 Abs. 5 lets one child's
+            // period push another's later and no single event can know that alone.
+            Self::OneOff { month, .. } | Self::ChildBorn { month, .. } => month_index == month,
             Self::WorkingTime { until_month, .. }
             | Self::UnpaidLeave { until_month, .. }
             | Self::OtherIncome { until_month, .. } => match until_month {
@@ -380,6 +403,42 @@ impl Schedule {
         self.count == 0
     }
 
+    /// Whether `month_index` falls inside a Kindererziehungszeit.
+    ///
+    /// # § 56 Abs. 5 extends rather than overlapping
+    ///
+    /// A child's period runs for thirty-six calendar months from the month after its birth.
+    /// Where a second child arrives while the first's period is still running, Satz 2
+    /// *extends* the period "um die Anzahl an Kalendermonaten der gleichzeitigen Erziehung"
+    /// — it does not run two periods in parallel. A parent of three children under three
+    /// therefore accrues one child's credit at a time for nine years, not three at once for
+    /// three.
+    ///
+    /// Modelled by queueing: each birth's window starts at the later of the month after the
+    /// birth and the end of the previous window, so the windows abut without ever overlapping.
+    /// That reproduces the extension exactly, and for well-spaced children reduces to the
+    /// plain thirty-six months apiece.
+    ///
+    /// `months_per_child` comes from the statute via `casivell-lawdata`, so the thirty-six is
+    /// not written here.
+    #[must_use]
+    pub fn child_raising_active(&self, month_index: u32, months_per_child: u32) -> bool {
+        let mut window_end = 0_u32;
+        for event in self.events() {
+            let Event::ChildBorn { month } = *event else {
+                continue;
+            };
+            // Events are kept in start-month order, so births arrive oldest first and the
+            // cursor only ever moves forward.
+            let start = month.saturating_add(1).max(window_end);
+            window_end = start.saturating_add(months_per_child);
+            if month_index >= start && month_index < window_end {
+                return true;
+            }
+        }
+        false
+    }
+
     /// The permanent changes taking effect exactly in `month_index`.
     ///
     /// The kernel adopts these as the new baseline before applying its own growth, so a
@@ -441,8 +500,11 @@ impl Schedule {
                 continue;
             }
             match *event {
-                // Permanent changes are already in the baseline; see `rebase_at`.
-                Event::PayChange { .. } | Event::ExpenseChange { .. } => {}
+                // Permanent changes are already in the baseline (see `rebase_at`), and a
+                // birth changes no monthly input at all — it credits pension entitlement,
+                // which `Schedule::child_raising_active` reports separately.
+                Event::PayChange { .. } | Event::ExpenseChange { .. } | Event::ChildBorn { .. } => {
+                }
                 Event::WorkingTime {
                     fraction: share, ..
                 } => fraction = Some(share),
@@ -504,7 +566,10 @@ const fn window_end(event: &Event) -> Option<u32> {
         Event::ParentalLeave {
             from_month, months, ..
         } => Some(from_month.saturating_add(months)),
-        Event::PayChange { .. } | Event::ExpenseChange { .. } | Event::OneOff { .. } => None,
+        Event::PayChange { .. }
+        | Event::ExpenseChange { .. }
+        | Event::OneOff { .. }
+        | Event::ChildBorn { .. } => None,
     }
 }
 

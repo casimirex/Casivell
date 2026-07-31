@@ -166,6 +166,10 @@ pub(crate) fn project_social(
                 wages,
                 steps,
             )?,
+            // Structural: § 70 Abs. 2's 0,0833 and § 56's 36 months are counts, not
+            // amounts, and no indexation rule touches either.
+            child_raising_points_micro: base.pension.child_raising_points_micro,
+            child_raising_months: base.pension.child_raising_months,
             provenance,
         },
         unemployment: UnemploymentInsurance {

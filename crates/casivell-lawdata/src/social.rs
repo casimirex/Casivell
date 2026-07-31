@@ -43,6 +43,23 @@ pub struct PensionInsurance {
     /// Aktueller Rentenwert for July through December, after the § 65 SGB VI
     /// adjustment takes effect.
     pub pension_value_jul_to_dec: Money,
+
+    /// § 70 Abs. 2 SGB VI: Entgeltpunkte credited per calendar month of
+    /// Kindererziehungszeit, in millionths of a point.
+    ///
+    /// The statute says `0,0833` — four decimal places, not one twelfth. Twelve
+    /// months therefore credit `0,9996` points rather than a round one, and that
+    /// truncation is the statute's own. Stored in millionths because
+    /// `casivell_social::EntgeltPoints` is defined above this crate and cannot be
+    /// referred to from inside it.
+    pub child_raising_points_micro: i64,
+    /// § 56 Abs. 5 SGB VI: calendar months of Kindererziehungszeit per child.
+    ///
+    /// Begins after the month of the birth, not in it. Where a second child arrives
+    /// during the first's period, § 56 Abs. 5 Satz 2 *extends* the period by the
+    /// months of overlap rather than running two in parallel — a parent never earns
+    /// two children's credit for one month.
+    pub child_raising_months: u32,
     /// Citation.
     pub provenance: Provenance,
 }
@@ -228,6 +245,8 @@ const SOCIAL_2025: SocialParameters = SocialParameters {
         average_earnings_annual: euro(50_493, 0),
         pension_value_jan_to_jun: euro(39, 32),
         pension_value_jul_to_dec: euro(40, 79),
+        child_raising_points_micro: 83_300,
+        child_raising_months: 36,
         provenance: Provenance::new(
             "§ 158 SGB VI, Anlage 1 SGB VI, SVBezGrV 2025, RWBestV 2025",
             "https://www.gesetze-im-internet.de/svbezgrv_2025/BJNR16D0A0024.html",
@@ -270,6 +289,8 @@ const SOCIAL_2026: SocialParameters = SocialParameters {
         average_earnings_annual: euro(51_944, 0),
         pension_value_jan_to_jun: euro(40, 79),
         pension_value_jul_to_dec: euro(42, 52),
+        child_raising_points_micro: 83_300,
+        child_raising_months: 36,
         provenance: Provenance::new(
             "§ 158 SGB VI, Anlage 1 SGB VI, SVBezGrV 2026, RWBestV 2026",
             "https://www.gesetze-im-internet.de/svbezgrv_2026/BJNR1160A0025.html",
