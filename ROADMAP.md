@@ -409,6 +409,33 @@ near 2026 would have passed.
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
+### Phase 4 — Persistence · *the reproducibility half is done*
+
+A saved scenario is only worth saving if it still means something when it is opened. That
+turns on a question nothing in the engine could previously answer: **which statutory data was
+this computed against?**
+
+- [x] **A stable fingerprint of a year's law.** FNV-1a over every statutory *value* — never a
+      memory representation, so the digest is identical across compilers, architectures and
+      builds, and safe to write into a file. 2026's enacted law is `e177cfbaa6bb7121`, and the
+      `law` report prints it as *Datenstand*.
+- [x] **Provenance is deliberately excluded.** A tidied citation or a fresh verification date
+      changes no computed figure, and a digest that moved when documentation improved would
+      cry wolf until it was ignored.
+- [x] **A projected year's digest follows its assumptions.** Two households projecting 2040 at
+      different inflation rates are working from *different data*, and the digest says so. An
+      enacted year's does not move, because no assumption enters it.
+- [ ] Writing and reading a scenario file, with a schema version and the digest inside it.
+- [ ] The scenario DAG: variants branching off a base.
+
+**The maintenance hazard, and what guards it.** A field added to a parameter set and not added
+to its digest would be invisible — scenarios would claim a reproducibility they no longer have.
+`the_digest_is_pinned` asserts an exact value, so any change to any hashed figure fails loudly;
+`every_parameter_set_reaches_the_digest` nudges one figure in each of the eight sets and checks
+the year's digest moves, which catches a whole parameter set forgotten in `LawYear`. Updating
+the pin is deliberately a moment where someone has to decide whether saved scenarios should be
+told the law changed — a question that is easy to skip if nothing forces it.
+
 ### Phase 6+ — Buying a home ✅ *complete*
 
 `casivell-property` prices the transaction and amortises the loan. It deliberately stops

@@ -9,7 +9,7 @@
 //! single most important thing about them.
 
 use casivell_core::{Money, MoneyError};
-use casivell_lawdata::{DataStatus, LawYear};
+use casivell_lawdata::{DataStatus, Fingerprinted as _, LawYear};
 use casivell_projection::Assumptions;
 
 use crate::format::{euro, percent};
@@ -174,9 +174,13 @@ fn write_basis(out: &mut String, law: &LawYear) {
     let _ = writeln!(out, "  · {}", law.social.pension.provenance.legal_basis);
     let _ = writeln!(
         out,
-        "  · verified {}\n",
+        "  · verified {}",
         law.income_tax.provenance.verified_on
     );
+    // The digest of every figure above. Two runs quoting the same one computed against the
+    // same law; a different one means a table moved, and the household is entitled to know
+    // that rather than to wonder why a projection shifted.
+    let _ = writeln!(out, "  · Datenstand {}\n", law.fingerprint());
     if !law.status().is_binding_law() {
         let _ = writeln!(
             out,

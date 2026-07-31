@@ -211,6 +211,51 @@ mod tests {
         TaxYear::new(value).expect("representable")
     }
 
+    /// A projected year's digest must depend on the assumptions that produced it.
+    ///
+    /// This is what makes the fingerprint meaningful past the enacted years. Two households
+    /// projecting 2040 under different inflation assumptions are working from *different
+    /// data*, and a saved scenario that reproduced its digest but not its assumptions would be
+    /// promising a reproducibility it does not have.
+    ///
+    /// The enacted years are the opposite case and are checked alongside: their digest must
+    /// **not** move, because no assumption enters them.
+    #[test]
+    fn a_projected_years_digest_follows_its_assumptions() {
+        use casivell_lawdata::Fingerprinted as _;
+
+        let cautious = Assumptions::from_percent_millis(1_500, 2_000).expect("valid");
+        let bullish = Assumptions::from_percent_millis(3_500, 4_000).expect("valid");
+
+        let a = resolve(year(2040), &cautious)
+            .expect("resolves")
+            .fingerprint();
+        let b = resolve(year(2040), &bullish)
+            .expect("resolves")
+            .fingerprint();
+        assert_ne!(
+            a, b,
+            "the assumptions are part of the data, and must be visible"
+        );
+
+        // Frozen assumptions are themselves an assumption, and a third distinct answer.
+        let frozen = resolve(year(2040), &Assumptions::frozen())
+            .expect("resolves")
+            .fingerprint();
+        assert_ne!(frozen, a);
+        assert_ne!(frozen, b);
+
+        // An enacted year admits no assumption, so its digest is fixed.
+        assert_eq!(
+            resolve(year(2026), &cautious)
+                .expect("resolves")
+                .fingerprint(),
+            resolve(year(2026), &bullish)
+                .expect("resolves")
+                .fingerprint()
+        );
+    }
+
     /// The single most important property in the crate: a projected year must never
     /// present itself as enacted law. `LawYear::status()` takes the weakest status of
     /// its parts, so this also proves the marking propagates rather than sitting

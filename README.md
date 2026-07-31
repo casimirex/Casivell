@@ -167,7 +167,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 602 tests
+cargo test --workspace                                        # 616 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -250,6 +250,11 @@ The mechanisms that came out of it:
   hands each to a sink. A forty-year run is `O(1)` in memory, and ten thousand Monte Carlo
   paths cost no more than one. `Vec` appearing outside a test module would mean the design
   had been abandoned.
+- Every year's statutory data has a **stable fingerprint** — FNV-1a over the figures
+  themselves, never their memory representation — so a saved scenario can record which law it
+  was computed against and a replay can tell the household if a table has moved since. A
+  projected year's digest follows its assumptions, because two projections at different
+  inflation rates are genuinely different data.
 - Where a result is knowably incomplete, the type says so:
   `ChurchTaxResult::base_is_exact` is `false` for households with children, because
   § 51a Abs. 2 EStG is not yet implemented.

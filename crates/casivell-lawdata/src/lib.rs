@@ -55,6 +55,7 @@
 pub mod benefits;
 pub mod deductions;
 pub mod extraordinary;
+pub mod fingerprint;
 pub mod income_tax;
 pub mod payroll;
 pub mod property;
@@ -66,6 +67,7 @@ pub mod surcharges;
 pub use benefits::ElterngeldParameters;
 pub use deductions::DeductionParameters;
 pub use extraordinary::{BurdenRates, BurdenRow, ExtraordinaryBurdenParameters};
+pub use fingerprint::{Fingerprint, Fingerprinted};
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use payroll::{PayrollParameters, TaxClass};
 pub use property::PropertyCostParameters;
