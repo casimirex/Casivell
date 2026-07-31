@@ -32,6 +32,7 @@
 )]
 
 mod args;
+mod assess_report;
 mod classes_report;
 mod format;
 mod law_report;
@@ -40,11 +41,16 @@ mod report;
 
 use std::process::ExitCode;
 
-use casivell_core::TaxYear;
-use casivell_payroll::{Employment, HealthCover, PayrollLaw, compare_classes, net_pay};
+use casivell_core::{Money, TaxYear};
+use casivell_income::{
+    AssessmentLaw, Contributions, Employee, assess, capital_income_tax, taxable_income,
+};
+use casivell_lawdata::{DeductionParameters, SocialParameters};
+use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
 use casivell_sim::{Household, SimulationConfig, simulate};
 use casivell_social::Insured;
+use casivell_tax::FilingStatus;
 
 use args::Request;
 
@@ -92,6 +98,12 @@ PROJECT OPTIONS
       --inflation <p>     Annual price inflation (default 2,0)
       --wage-growth <p>   Annual wage growth (default 2,8)
 
+ASSESS OPTIONS
+      --work-expenses <a> Actual Werbungskosten, if above the Pauschbetrag
+      --donations <a>     Other Sonderausgaben (§§ 10–10b)
+      --capital <a>       Gross capital income for the year (§ 20)
+      --benefits <a>      Tax-free wage-replacement benefits (§ 32b)
+
 CLASSES OPTIONS
       --partner <amount>  The second spouse's monthly gross (required)
 
@@ -101,6 +113,7 @@ LAW OPTIONS
 
 EXAMPLES
   casivell --gross 4500 --class 1
+  casivell assess --gross 5000 --class 1 --children 1 --capital 3000
   casivell classes --gross 5000 --partner 1800 --class 4
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
@@ -127,6 +140,7 @@ fn main() -> ExitCode {
     }
 
     let outcome = match argv.first().map(String::as_str) {
+        Some("assess") => run_assess(argv.into_iter().skip(1).collect()),
         Some("classes") => run_classes(argv.into_iter().skip(1).collect()),
         Some("law") => run_law(argv.into_iter().skip(1).collect()),
         Some("project") => run_project(argv.into_iter().skip(1).collect()),
@@ -144,6 +158,132 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The monthly gross equivalent to a figure given for `period`.
+///
+/// The assessment form works in whole years, so a salary quoted annually or monthly has to
+/// reach it as one steady month. Refuses anything the PAP itself refuses.
+fn monthly_equivalent(gross: Money, period: PayPeriod) -> Result<Money, casivell_core::MoneyError> {
+    gross.div_int(period.months(), casivell_core::Rounding::HalfUp)
+}
+
+/// A year's employee facts, from twelve identical months.
+fn annual_employee(
+    request: &args::AssessRequest,
+    pay: &casivell_payroll::NetPay,
+    monthly_gross: Money,
+    social: &SocialParameters,
+) -> Result<Employee, casivell_core::MoneyError> {
+    Ok(Employee {
+        gross_annual: monthly_gross.mul_int(12)?,
+        work_expenses: request.work_expenses,
+        contributions: Contributions::from_social(
+            &pay.monthly_contributions,
+            social,
+            request.base.supplementary_rate,
+            12,
+        )?,
+        church_tax_paid: pay.church_tax.mul_int(12)?,
+        other_special_expenses: request.other_special_expenses,
+        wage_replacement_benefits: request.benefits,
+        children: request.base.children,
+    })
+}
+
+/// The § 32d computation, where there is capital income to run it on.
+fn capital_or_none(
+    request: &args::AssessRequest,
+    assessment: &casivell_income::Assessment,
+    filing: FilingStatus,
+    church: Option<casivell_lawdata::Bundesland>,
+    law: &AssessmentLaw,
+) -> Result<Option<casivell_income::CapitalIncomeTax>, casivell_core::MoneyError> {
+    if request.capital_income.is_zero() {
+        return Ok(None);
+    }
+    Ok(Some(capital_income_tax(
+        request.capital_income,
+        assessment.taxable_income,
+        filing,
+        church,
+        law,
+    )?))
+}
+
+/// Runs an annual assessment for one steady salary and renders the § 2 chain.
+fn run_assess(argv: Vec<String>) -> Result<String, String> {
+    let request = args::parse_assess(argv).map_err(|e| e.to_string())?;
+    let base = request.base;
+
+    let year = TaxYear::new(base.year).map_err(|_| {
+        format!(
+            "{} is outside the representable range {}–{}.",
+            base.year,
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_REPRESENTABLE.get(),
+        )
+    })?;
+    let law = PayrollLaw::for_year(year)
+        .map_err(|_| format!("no enacted payroll parameters for {}.", base.year))?;
+    let deductions = DeductionParameters::for_year(year)
+        .map_err(|_| format!("no enacted deduction parameters for {}.", base.year))?;
+    let social = SocialParameters::for_year(year)
+        .map_err(|_| format!("no enacted social parameters for {}.", base.year))?;
+
+    let employment = build_employment(&base).map_err(|e| e.to_string())?;
+    let monthly_gross = monthly_equivalent(base.gross, base.period).map_err(|e| e.to_string())?;
+
+    // A full year at a steady salary: twelve identical months, which is what an assessment
+    // form can assume when it is given one figure. The report says so.
+    let pay =
+        net_pay(monthly_gross, PayPeriod::Month, &employment, &law).map_err(|e| e.to_string())?;
+    let withheld = pay
+        .income_tax
+        .add(pay.solidarity_surcharge)
+        .and_then(|t| t.add(pay.church_tax))
+        .and_then(|t| t.mul_int(12))
+        .map_err(|e| e.to_string())?;
+
+    let employee =
+        annual_employee(&request, &pay, monthly_gross, &social).map_err(|e| e.to_string())?;
+    let income = taxable_income(&employee, &deductions).map_err(|e| e.to_string())?;
+
+    let assessment_law = AssessmentLaw {
+        tariff: law.tariff,
+        solidarity: law.solidarity,
+        church: law.church,
+        deductions,
+    };
+    // Class III is a single-earner married couple, whose whole income this form has. Every
+    // other class is either an individual or a household the form cannot see all of, so it
+    // assesses individually and the notes say the figure is an estimate.
+    let filing = match base.tax_class {
+        casivell_lawdata::TaxClass::Class3 => FilingStatus::JointSplitting,
+        _ => FilingStatus::Individual,
+    };
+    let church = if base.church { Some(base.land) } else { None };
+    let assessment = assess(
+        &income,
+        filing,
+        church,
+        u16::from(base.children).saturating_mul(10),
+        withheld,
+        &assessment_law,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let capital = capital_or_none(&request, &assessment, filing, church, &assessment_law)
+        .map_err(|e| e.to_string())?;
+
+    assess_report::render(&assess_report::AssessmentReport {
+        year: base.year,
+        income,
+        assessment,
+        capital,
+        benefits: request.benefits,
+    })
+    .map_err(|e| e.to_string())
 }
 
 /// Compares the tax-class arrangements available to a married couple.

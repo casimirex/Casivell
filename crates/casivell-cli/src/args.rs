@@ -600,6 +600,55 @@ where
     })
 }
 
+/// A request for an annual assessment.
+pub(crate) struct AssessRequest {
+    /// The household description.
+    pub(crate) base: Request,
+    /// Actual Werbungskosten, where they exceed the § 9a Pauschbetrag.
+    pub(crate) work_expenses: Money,
+    /// Other Sonderausgaben under §§ 10–10b: donations, maintenance, training.
+    pub(crate) other_special_expenses: Money,
+    /// Gross capital income for the year, § 20 EStG.
+    pub(crate) capital_income: Money,
+    /// Tax-free wage-replacement benefits received, § 32b Abs. 1 Nr. 1.
+    pub(crate) benefits: Money,
+}
+
+/// Parses the `assess` form.
+///
+/// # Errors
+///
+/// [`ArgError`] on an unusable argument.
+pub(crate) fn parse_assess(args: Vec<String>) -> Result<AssessRequest, ArgError> {
+    let mut shared = Vec::with_capacity(args.len());
+    let (mut work_expenses, mut other, mut capital, mut benefits) =
+        (Money::ZERO, Money::ZERO, Money::ZERO, Money::ZERO);
+
+    let mut iter = args.into_iter();
+    while let Some(flag) = iter.next() {
+        match flag.as_str() {
+            "--work-expenses" => work_expenses = parse_money(&flag, &mut iter)?,
+            "--donations" => other = parse_money(&flag, &mut iter)?,
+            "--capital" => capital = parse_money(&flag, &mut iter)?,
+            "--benefits" => benefits = parse_money(&flag, &mut iter)?,
+            other_flag => {
+                shared.push(other_flag.to_owned());
+                if takes_a_value(other_flag) {
+                    shared.push(next_value(other_flag, &mut iter)?);
+                }
+            }
+        }
+    }
+
+    Ok(AssessRequest {
+        base: Request::parse(shared)?,
+        work_expenses,
+        other_special_expenses: other,
+        capital_income: capital,
+        benefits,
+    })
+}
+
 /// A request to compare tax-class arrangements.
 pub(crate) struct ClassesRequest {
     /// The household description, carrying the first salary.

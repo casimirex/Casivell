@@ -407,6 +407,20 @@ near 2026 would have passed.
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
+### Phase 2+ — The CLI reaches the whole engine ✅ *complete*
+
+`casivell-income` had been reachable only through the simulation kernel, which meant the § 2
+chain — the part of the engine a person would most want to check against their own
+Steuerbescheid — could not be looked at directly. `casivell assess` prints it stage by stage:
+Werbungskosten, both Vorsorge caps with a note where each binds, the § 31 Günstigerprüfung in
+words, the settlement, and § 32d capital income with what the Abs. 6 election is worth.
+
+Every intermediate is shown rather than only the answer, because reconciling a Bescheid means
+finding *which* line diverged and a single figure makes that impossible.
+
+`--benefits` and `--capital` also give § 32b and § 32d their first CLI surface; both were
+implemented and unreachable.
+
 ### Phase 2+ — § 39f and the tax-class question ✅ *complete*
 
 The most misunderstood thing in German payroll, and now the thing the tool says first.

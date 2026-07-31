@@ -18,11 +18,13 @@ version = "0.1.0"
 dependencies = [
  "casivell-benefits",
  "casivell-core",
+ "casivell-income",
  "casivell-lawdata",
  "casivell-payroll",
  "casivell-projection",
  "casivell-sim",
  "casivell-social",
+ "casivell-tax",
 ]
 
 [[package]]
