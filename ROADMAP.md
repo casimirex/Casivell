@@ -225,7 +225,12 @@ tables rather than with a third-party calculator.
       people actually want from a tax tool.
 - [x] **§ 51a Abs. 2 surcharge base**, closing the gap `casivell_tax::church_tax` recorded:
       church tax and Soli are now levied on the child-reduced base in the assessment path too.
-- [ ] Kapitalerträge: Abgeltungsteuer and the Sparer-Pauschbetrag.
+- [x] **Kapitalerträge** (§ 32d): the flat 25 % Abgeltungsteuer, the § 20 Abs. 9
+      Sparer-Pauschbetrag, and the **Abs. 6 Günstigerprüfung** — the election of the ordinary
+      tariff, run as two whole computations and reported with what the election was worth.
+      The crossover is lower than intuition suggests: at 20 000 € of other income the
+      marginal rate is 24,7 %, and stacking the capital income carries the average over 25 %,
+      so the flat rate already wins.
 - [ ] Außergewöhnliche Belastungen (§§ 33–33b), which need a zumutbare Belastung.
 - [ ] Tax class comparison III/V versus IV+Faktor.
 - [ ] The other five income categories of § 2 Abs. 1.
@@ -250,6 +255,19 @@ from what is available:
    Zusatzbeitrag while § 10 deducts it in full.
 5. Structural properties: taxable income never exceeds gross, deductions are monotonic, caps
    bind where they should, and the Günstigerprüfung never chooses the worse option.
+
+**The check that was missing, found by wiring the assessment into the kernel (Phase 3+).**
+Lohnsteuer withholding is *designed* to be right for an employee whose year is flat — that is
+the premise of § 39b, which annualises each month and divides back. So for a flat year the
+assessment must return almost nothing, and it does: the two paths land within **96 to 332
+cents** of each other on withholding of 2 248 € to 59 917 €, across a sixfold salary range and
+under both the Grund- and the Splittingtarif.
+
+That is not a tautology. Withholding runs the BMF Programmablaufplan with its deliberately
+simplified Vorsorgepauschale; the assessment runs § 2 EStG with the real § 10 deduction.
+Different statutes, different code, sharing only the tariff. Nothing makes them agree except
+both being right — which is the strongest evidence available for the § 10 chain short of a
+real Steuerbescheid, and it did not exist before the kernel could run both.
 
 **`Assessment::is_exact` is always `false`.** § 10's interaction has not been reconciled
 against a real Steuerbescheid, and several income categories are absent. The flag is in the
@@ -355,6 +373,28 @@ Withholding is the statute's own approximation of the annual liability and is ve
 against 516 official values; an invented simplification would have been a plausible figure
 with nothing behind it. The PAP's *structure* is still not projected — only its numbers.
 
+**Extended when the assessment reached the kernel:** `DeductionParameters` are now projected
+too, and `LawYear` carries them. The Kinderfreibetrag, the Kindergeld and both Pauschbeträge
+are indexed to prices; the miners' pension ceiling to wages, on its own § 159 SGB VI grid,
+because it alone determines the Altersvorsorge cap. Rates and the § 10 Abs. 4 caps carry
+forward, as everywhere else.
+
+**A bug this produced, and the guard it left behind.** § 9a sets a fixed nominal amount with
+no indexation rule, so the crate's usual principle said carry it forward — and that is what
+was written first. But the *same* Pauschbetrag is projected by `project_payroll` for the
+Programmablaufplan, where it was already indexed. Withholding and the annual assessment then
+used different figures in the same simulated month, and a household's Steuerbescheid drifted
+about ten euro a year, compounding into a **169 € demand after twenty years that no statute
+produced**. It surfaced as a settlement curve that kept falling past zero instead of settling
+onto the flat-year residual.
+
+The fix is consistency: between two defensible conventions, the one that keeps the whole
+system coherent wins — and indexing is independently the better guess, since the
+Arbeitnehmer-Pauschbetrag has in fact been raised repeatedly (1 000 → 1 200 → 1 230 €).
+`the_two_paths_project_the_same_pauschbetraege` now holds the two tables equal at **every**
+horizon from 0 to 44 steps, because the failure grew with distance and a single spot check
+near 2026 would have passed.
+
 ### Phase 5 — UI · ~5 weeks
 
 - [ ] Input flows for household, income, expenses (the CLI is the reference for what
@@ -365,6 +405,36 @@ with nothing behind it. The PAP's *structure* is still not projected — only it
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
+### Phase 3+ — The annual assessment inside the kernel ✅ *complete*
+
+The gap Phase 3 left open, and the precondition for several later items.
+
+- [x] **Each calendar year is assessed as it closes**, under its own year's tariff and
+      allowances, from income and withholding accumulated month by month rather than from an
+      annual salary — because the whole point is that the twelve months need not be alike.
+- [x] **The settlement arrives at a lag.** Seven months, putting it at the end of the
+      following July: § 149 Abs. 2 AO's filing deadline, with the Bescheid following. A
+      refund is not current-year cash, and a cash-flow projection that paid it in December
+      would be wrong about the thing it exists to model.
+- [x] **Refused rather than approximated** for tax classes IV, V and VI and for private
+      health cover. `NoAssessment` names the reason and the CLI prints it. Assessing one
+      salary of two under the Splittingtarif would invent a large refund every year, which is
+      far worse than showing withholding and saying why.
+- [x] **Entgeltpunkte now reset on the calendar year**, not the employment anniversary. A
+      latent bug for any projection not starting in January, which had been accruing points
+      over a July-to-June window the statute knows nothing about.
+
+**What it changes.** A career break, a mid-year start or a part-time year all over-withhold
+under § 39b, which taxes each month as though the year continued unchanged. Six unpaid months
+at 5 000 € now refund over 1 000 € the following July. Before this the projection showed every
+interruption costing strictly more than it does.
+
+**A finding that fell out of it.** A household with one child and pay that never rises sees
+the § 31 Günstigerprüfung *reverse* over twenty years: the Kinderfreibetrag is worth 372,96 €
+at the start, declines every year as indexed allowances outgrow flat pay, and by about year
+eleven the Kindergeld has become the better deal. Nobody encoded that crossover — it falls out
+of two indexed statutory series meeting a household that stood still.
+
 ### Phase 6 — Life events · *in progress*
 
 - [x] **The event architecture.** A bounded `Schedule` of events, resolved per month. Every
@@ -374,11 +444,10 @@ with nothing behind it. The PAP's *structure* is still not projected — only it
       **expense changes**, **one-off costs**, and **non-employment income**.
 - [x] Exposed through the CLI: `--part-time 3:8:60`, `--break 5:6`, `--raise 15:8000`,
       `--one-off 5:-60000`.
-- [ ] **Elterngeld.** Blocked, and deliberately: doing it correctly needs the
-      Progressionsvorbehalt of § 32b EStG — Elterngeld is tax-free but raises the rate on
-      everything else — which needs the annual assessment inside the kernel rather than
-      monthly withholding. Adding the payment without the rate effect would understate every
-      family's tax. `Event::OtherIncome` takes a known net amount meanwhile.
+- [ ] **Elterngeld.** Was blocked on the annual assessment being inside the kernel; that
+      landed in Phase 3+, so what remains is § 32b itself — Elterngeld is tax-free but raises
+      the rate on everything else, and adding the payment without the rate effect would
+      understate every family's tax. `Event::OtherIncome` takes a known net amount meanwhile.
 - [ ] Kita costs, which are municipal rather than statutory and have no national table.
 - [ ] Buy versus rent: needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
       amortisation. The deposit and the payment can be modelled today with `--one-off` and an

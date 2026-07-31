@@ -82,12 +82,14 @@
 #[cfg(test)]
 extern crate alloc;
 
+pub mod assessment;
 pub mod events;
 pub mod household;
 pub mod monte_carlo;
 pub mod rng;
 pub mod timeline;
 
+pub use assessment::{AnnualSettlement, NoAssessment, SETTLEMENT_LAG_MONTHS, filing_status_for};
 pub use events::{Event, MonthInputs, Rebase, Schedule};
 pub use household::{Household, SimulationConfig};
 pub use monte_carlo::{Outcome, monte_carlo};

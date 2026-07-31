@@ -6,6 +6,11 @@ use casivell_payroll::{NetPay, PayPeriod, PayrollLaw, net_pay};
 use casivell_projection::{Assumptions, ProjectionError, project_payroll, resolve};
 use casivell_social::EntgeltPoints;
 
+use casivell_income::AssessmentLaw;
+
+use crate::assessment::{
+    AnnualSettlement, YearTally, assessment_law, filing_status_for, settle_year,
+};
 use crate::events::MonthInputs;
 use crate::household::{Household, SimulationConfig};
 
@@ -141,6 +146,13 @@ pub struct MonthSnapshot {
     pub other_income: Money,
     /// A one-off cost or windfall applied to wealth this month. Negative is a cost.
     pub one_off: Money,
+    /// An annual assessment settling this month: positive is a refund, negative a demand.
+    ///
+    /// Zero in eleven months of twelve, and zero throughout for a household the kernel
+    /// declines to assess — see [`crate::assessment::NoAssessment`]. Reported separately from
+    /// [`Self::one_off`] because it is not a household decision but a consequence of the
+    /// year that preceded it.
+    pub tax_settlement: Money,
     /// Expenses for the month.
     pub expenses: Money,
     /// Net less expenses. Negative when the household is drawing down.
@@ -218,6 +230,13 @@ pub struct Summary {
     pub total_tax: Money,
     /// Total social insurance contributions paid by the employee.
     pub total_contributions: Money,
+    /// Net of every annual settlement received: positive is refunds on balance.
+    ///
+    /// A projection's *actual* tax burden is [`Self::total_tax`] less this. Kept apart rather
+    /// than netted so a household can see how much of what was withheld came back.
+    pub total_settlements: Money,
+    /// How many annual settlements landed inside the horizon.
+    pub settlements_applied: u32,
     /// Entgeltpunkte accrued by the end.
     pub final_pension_points: EntgeltPoints,
     /// The weakest status encountered, so a summary drawn from projected years says so.
@@ -248,6 +267,11 @@ impl Sink for Summary {
         self.total_tax = add_saturating(self.total_tax, tax);
         self.total_contributions =
             add_saturating(self.total_contributions, snapshot.employee_contributions);
+        if !snapshot.tax_settlement.is_zero() {
+            self.total_settlements =
+                add_saturating(self.total_settlements, snapshot.tax_settlement);
+            self.settlements_applied = self.settlements_applied.saturating_add(1);
+        }
         true
     }
 }
@@ -265,6 +289,13 @@ struct State {
     /// Contributory income so far this calendar year, for the annual Entgeltpunkte
     /// calculation.
     contributory_this_year: Money,
+    /// This calendar year's income and withholding, for the annual assessment.
+    tally: YearTally,
+    /// The one settlement that can be outstanding at a time.
+    ///
+    /// One slot suffices because [`crate::assessment::SETTLEMENT_LAG_MONTHS`] is under a
+    /// year, which is asserted at compile time where the constant is defined.
+    pending: Option<AnnualSettlement>,
 }
 
 /// Runs a projection, streaming each month to `sink`.
@@ -285,58 +316,54 @@ pub fn simulate<S: Sink>(
         monthly_gross: household.monthly_gross,
         monthly_expenses: household.monthly_expenses,
         contributory_this_year: Money::ZERO,
+        tally: YearTally::new(household.start_year.get()),
+        pending: None,
     };
 
-    let mut cached: Option<(u16, PayrollLaw)> = None;
+    // `Err` is not a failure: it names the reason this household's assessment would be
+    // meaningless, and the projection then reports withholding as paid — which is what such
+    // a household actually pays month to month.
+    let filing = filing_status_for(&household.employment).ok();
+
+    let mut cached: Option<(u16, PayrollLaw, AssessmentLaw)> = None;
 
     for month_index in 0..config.horizon.as_months() {
         let (year, month) = calendar(household, month_index)?;
+
+        // A calendar year just ended. Assess it *before* the law rolls over, because a year
+        // is assessed under its own year's tariff and allowances.
+        if year != state.tally.year {
+            close_year(&mut state, month_index, household, filing, cached.as_ref())?;
+        }
 
         // Statutory parameters change once a year, so they are resolved once a year. The
         // hot loop must not be re-projecting a tariff twelve times.
         if cached
             .as_ref()
-            .is_none_or(|(cached_year, _)| *cached_year != year)
+            .is_none_or(|(cached_year, _, _)| *cached_year != year)
         {
-            cached = Some((year, resolve_payroll_law(year, &config.assumptions)?));
+            let (payroll, assessment) = resolve_year_law(year, &config.assumptions)?;
+            cached = Some((year, payroll, assessment));
         }
-        let Some((_, law)) = cached.as_ref() else {
+        let Some((_, law, _)) = cached.as_ref() else {
             // Unreachable: the branch above always populates it.
             return Err(SimulationError::Arithmetic(MoneyError::Overflow));
         };
 
-        // Pay and expenses step up once a year, on the anniversary rather than in January,
-        // because a raise is a property of the employment and not of the calendar.
-        if month_index > 0 && month_index % MONTHS_PER_YEAR == 0 {
-            state.monthly_gross = grow(state.monthly_gross, household.annual_pay_growth)?;
-            state.monthly_expenses = grow(state.monthly_expenses, household.annual_expense_growth)?;
-            state.contributory_this_year = Money::ZERO;
-        }
+        let (pay, inputs) = advance_month(&mut state, month_index, household, law)?;
 
-        // A permanent change rebases the baseline, so the household's own growth compounds
-        // from the new figure rather than being overtaken by it. Adopted after this year's
-        // growth, so a promotion landing on an anniversary is not immediately inflated.
-        let rebase = household.schedule.rebase_at(month_index);
-        if let Some(gross) = rebase.gross {
-            state.monthly_gross = gross;
-        }
-        if let Some(expenses) = rebase.expenses {
-            state.monthly_expenses = expenses;
-        }
-
-        // Transient modifiers then adjust the month. Events change inputs only: tax and
-        // contributions still follow from the resulting gross through the same verified code
-        // that produces a payslip, so an event cannot invent a tax rule.
-        let inputs = household
-            .schedule
-            .resolve(month_index, state.monthly_gross, state.monthly_expenses)
-            .map_err(SimulationError::Arithmetic)?;
-
-        let pay = net_pay(inputs.gross, PayPeriod::Month, &household.employment, law)
-            .map_err(SimulationError::Arithmetic)?;
+        // A settlement assessed some months ago reaches the household now.
+        let settlement = match state.pending {
+            Some(pending) if pending.month_index == month_index => {
+                state.pending = None;
+                pending.amount
+            }
+            _ => Money::ZERO,
+        };
 
         accrue_pension(&mut state, &pay, law)?;
-        let (investment_return, savings) = advance_wealth(&mut state, &pay, &inputs, config)?;
+        let (investment_return, savings) =
+            advance_wealth(&mut state, &pay, &inputs, settlement, config)?;
 
         let snapshot = build_snapshot(
             month_index,
@@ -345,8 +372,11 @@ pub fn simulate<S: Sink>(
             &pay,
             &state,
             &inputs,
-            investment_return,
-            savings,
+            Flows {
+                investment_return,
+                savings,
+                settlement,
+            },
             law,
             config,
         )?;
@@ -356,6 +386,98 @@ pub fn simulate<S: Sink>(
         }
     }
     Ok(())
+}
+
+/// Applies growth, events and payroll for one month.
+///
+/// Split out of [`simulate`] so the loop reads as its five steps — close the year, resolve
+/// the law, run the month, settle, emit — rather than as one long body.
+fn advance_month(
+    state: &mut State,
+    month_index: u32,
+    household: &Household,
+    law: &PayrollLaw,
+) -> Result<(NetPay, MonthInputs), SimulationError> {
+    // Pay and expenses step up once a year, on the anniversary rather than in January,
+    // because a raise is a property of the employment and not of the calendar.
+    if month_index > 0 && month_index % MONTHS_PER_YEAR == 0 {
+        state.monthly_gross = grow(state.monthly_gross, household.annual_pay_growth)?;
+        state.monthly_expenses = grow(state.monthly_expenses, household.annual_expense_growth)?;
+    }
+
+    // A permanent change rebases the baseline, so the household's own growth compounds
+    // from the new figure rather than being overtaken by it. Adopted after this year's
+    // growth, so a promotion landing on an anniversary is not immediately inflated.
+    let rebase = household.schedule.rebase_at(month_index);
+    if let Some(gross) = rebase.gross {
+        state.monthly_gross = gross;
+    }
+    if let Some(expenses) = rebase.expenses {
+        state.monthly_expenses = expenses;
+    }
+
+    // Transient modifiers then adjust the month. Events change inputs only: tax and
+    // contributions still follow from the resulting gross through the same verified code
+    // that produces a payslip, so an event cannot invent a tax rule.
+    let inputs = household
+        .schedule
+        .resolve(month_index, state.monthly_gross, state.monthly_expenses)
+        .map_err(SimulationError::Arithmetic)?;
+
+    let pay = net_pay(inputs.gross, PayPeriod::Month, &household.employment, law)
+        .map_err(SimulationError::Arithmetic)?;
+    state
+        .tally
+        .add_month(&pay)
+        .map_err(SimulationError::Arithmetic)?;
+
+    Ok((pay, inputs))
+}
+
+/// Assesses the calendar year that just ended and schedules its settlement.
+///
+/// Called on the first month of a new calendar year, so `month_index` is one past the
+/// assessed year's last month. Does nothing when the household is one the kernel declines to
+/// assess, or on the very first month, when no year has yet been accumulated.
+///
+/// The projection's *final* calendar year is deliberately never assessed: there is no
+/// following month to trigger it, and its settlement would in any case fall past the horizon
+/// by [`crate::assessment::SETTLEMENT_LAG_MONTHS`]. A refund that arrives after the
+/// projection ends is one the household does not have yet.
+fn close_year(
+    state: &mut State,
+    month_index: u32,
+    household: &Household,
+    filing: Option<casivell_tax::FilingStatus>,
+    cached: Option<&(u16, PayrollLaw, AssessmentLaw)>,
+) -> Result<(), SimulationError> {
+    if let (Some(filing), Some((_, payroll, assessment))) = (filing, cached)
+        && state.tally.months > 0
+    {
+        state.pending = Some(
+            settle_year(
+                &state.tally,
+                month_index.saturating_sub(1),
+                &household.employment,
+                filing,
+                &payroll.social,
+                assessment,
+            )
+            .map_err(SimulationError::Arithmetic)?,
+        );
+    }
+    // Entgeltpunkte are a calendar-year entitlement, so the contributory total resets here
+    // rather than on the employment anniversary. For a projection starting in January the
+    // two coincide; for one starting in July they do not, and resetting on the anniversary
+    // would accrue points over a July-to-June window the statute knows nothing about.
+    state.contributory_this_year = Money::ZERO;
+    state.tally = YearTally::new(calendar_year_of(state.tally.year).saturating_add(1));
+    Ok(())
+}
+
+/// The calendar year a tally belongs to. A named step, so the successor above reads as one.
+const fn calendar_year_of(year: u16) -> u16 {
+    year
 }
 
 /// The calendar year and month `month_index` months after the start.
@@ -382,11 +504,15 @@ fn calendar(household: &Household, month_index: u32) -> Result<(u16, u8), Simula
     ))
 }
 
-/// Resolves the payroll parameters for a year, projecting where no statute exists.
-fn resolve_payroll_law(
+/// Resolves a year's parameters, projecting where no statute exists.
+///
+/// Returns both views of the same year: the payroll parameters the monthly loop needs, and
+/// the assessment parameters December needs. Resolved together so the two can never disagree
+/// about which year's law they are on.
+fn resolve_year_law(
     year: u16,
     assumptions: &Assumptions,
-) -> Result<PayrollLaw, SimulationError> {
+) -> Result<(PayrollLaw, AssessmentLaw), SimulationError> {
     let fail = |cause: ProjectionError| SimulationError::LawUnavailable { year, cause };
     let tax_year = TaxYear::new(year).map_err(|e| fail(ProjectionError::Arithmetic(e)))?;
     let law = resolve(tax_year, assumptions).map_err(fail)?;
@@ -408,14 +534,17 @@ fn resolve_payroll_law(
         .map_err(fail)?
     };
 
-    Ok(PayrollLaw {
-        year: tax_year,
-        payroll,
-        tariff: law.income_tax,
-        solidarity: law.solidarity,
-        church: law.church_tax,
-        social: law.social,
-    })
+    Ok((
+        PayrollLaw {
+            year: tax_year,
+            payroll,
+            tariff: law.income_tax,
+            solidarity: law.solidarity,
+            church: law.church_tax,
+            social: law.social,
+        },
+        assessment_law(&law),
+    ))
 }
 
 /// Accrues Entgeltpunkte for the month.
@@ -457,6 +586,7 @@ fn advance_wealth(
     state: &mut State,
     pay: &NetPay,
     inputs: &MonthInputs,
+    settlement: Money,
     config: &SimulationConfig,
 ) -> Result<(Money, Money), SimulationError> {
     let monthly_return = monthly_rate(config.investment_return)?;
@@ -476,8 +606,17 @@ fn advance_wealth(
         .add(investment_return)
         .and_then(|w| w.add(savings))
         .and_then(|w| w.add(inputs.one_off))
+        .and_then(|w| w.add(settlement))
         .map_err(SimulationError::Arithmetic)?;
     Ok((investment_return, savings))
+}
+
+/// The month's money movements that are not payroll and not events.
+#[derive(Debug, Clone, Copy)]
+struct Flows {
+    investment_return: Money,
+    savings: Money,
+    settlement: Money,
 }
 
 /// Assembles a snapshot, applying the requested basis.
@@ -493,8 +632,7 @@ fn build_snapshot(
     pay: &NetPay,
     state: &State,
     inputs: &MonthInputs,
-    investment_return: Money,
-    savings: Money,
+    flows: Flows,
     law: &PayrollLaw,
     config: &SimulationConfig,
 ) -> Result<MonthSnapshot, SimulationError> {
@@ -526,9 +664,10 @@ fn build_snapshot(
         net: deflate(pay.net)?,
         other_income: deflate(inputs.other_income)?,
         one_off: deflate(inputs.one_off)?,
+        tax_settlement: deflate(flows.settlement)?,
         expenses: deflate(inputs.expenses)?,
-        savings: deflate(savings)?,
-        investment_return: deflate(investment_return)?,
+        savings: deflate(flows.savings)?,
+        investment_return: deflate(flows.investment_return)?,
         wealth: deflate(state.wealth)?,
         pension_points: state.pension_points,
         accrued_pension: deflate(accrued_pension)?,
@@ -775,10 +914,14 @@ mod tests {
         }
     }
 
-    /// Wealth must move by exactly savings plus return, every month. If this drifts, money
-    /// is being created or destroyed somewhere in the loop.
+    /// Wealth must move by exactly savings, return and settlement, every month. If this
+    /// drifts, money is being created or destroyed somewhere in the loop.
+    ///
+    /// The settlement term is what the annual assessment added: without it this test failed
+    /// at month 18 — July of the second year, which is precisely where the first
+    /// Steuerbescheid lands.
     #[test]
-    fn wealth_moves_by_exactly_savings_plus_return() {
+    fn wealth_moves_by_exactly_savings_return_and_settlement() {
         let mut c = config(10, Basis::Nominal);
         c.investment_return = Rate::from_percent_millis(6_000).unwrap();
         let months = collect(&household(5_000, 2_500), &c);
@@ -789,6 +932,8 @@ mod tests {
                 .add(m.investment_return)
                 .unwrap()
                 .add(m.savings)
+                .unwrap()
+                .add(m.tax_settlement)
                 .unwrap();
             assert_eq!(
                 m.wealth, expected,

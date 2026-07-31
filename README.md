@@ -42,7 +42,7 @@ crates/
 ├── casivell-core/      Money (integer cents), Rate (integer ppm), named rounding
 ├── casivell-lawdata/   Year-keyed statutory tables, every figure cited
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
-├── casivell-income/    § 2 EStG: gross → taxable income, and the annual assessment
+├── casivell-income/    § 2 EStG: gross → taxable income, the assessment, § 32d capital
 ├── casivell-social/    Social insurance contributions, pension entitlement
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
@@ -165,7 +165,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 426 tests
+cargo test --workspace                                        # 464 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2
@@ -237,6 +237,13 @@ The mechanisms that came out of it:
   Altersvorsorge cap *derived* and matched to its published value, an external crossover
   figure for the Günstigerprüfung, and a bounded comparison against the Vorsorgepauschale.
   `Assessment::is_exact` is `false` and says why.
+- The strongest of those checks only became possible once the assessment ran inside the
+  kernel. Withholding is *designed* to be right for a flat year — that is the premise of
+  § 39b — so on a flat year the annual assessment must return almost nothing. It does: the
+  two paths land within **96 to 332 cents** of each other on withholding of 2 248 € to
+  59 917 €. They share only the tariff; one runs the BMF Programmablaufplan with its
+  simplified Vorsorgepauschale, the other § 2 EStG with the real § 10 deduction. Nothing
+  makes them agree except both being right.
 - The simulation kernel is `#![no_std]` and **streams**: it holds one month at a time and
   hands each to a sink. A forty-year run is `O(1)` in memory, and ten thousand Monte Carlo
   paths cost no more than one. `Vec` appearing outside a test module would mean the design
@@ -244,6 +251,14 @@ The mechanisms that came out of it:
 - Where a result is knowably incomplete, the type says so:
   `ChurchTaxResult::base_is_exact` is `false` for households with children, because
   § 51a Abs. 2 EStG is not yet implemented.
+
+It also caught a bug of exactly the kind it was built for. The § 9a Pauschbetrag is projected
+by two modules — the Programmablaufplan's table and the deduction table — and they disagreed
+about whether to index it. Withholding and the annual assessment then used different figures
+in the same simulated month, and a household's Steuerbescheid drifted about ten euro a year
+into a **169 € demand after twenty years that no statute produced**. The two are now held
+equal at every horizon out to 44 years, because the error grew with distance and a spot check
+near 2026 would have passed.
 
 This machinery has already caught a live error. A test asserting the care-insurance
 rate floor at 2.4 % — a figure current secondary sources still publish — failed

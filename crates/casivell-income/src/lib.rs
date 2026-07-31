@@ -72,7 +72,7 @@ pub mod capital;
 pub mod taxable_income;
 pub mod vorsorge;
 
-pub use assessment::{Assessment, ChildRelief, assess};
+pub use assessment::{Assessment, AssessmentLaw, ChildRelief, assess};
 pub use capital::{CapitalIncomeTax, CapitalRoute, capital_income_tax};
 pub use taxable_income::{Employee, TaxableIncome, taxable_income};
-pub use vorsorge::{Vorsorgeaufwendungen, vorsorgeaufwendungen};
+pub use vorsorge::{Contributions, Vorsorgeaufwendungen, vorsorgeaufwendungen};

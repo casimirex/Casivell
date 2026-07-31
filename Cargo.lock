@@ -59,10 +59,12 @@ name = "casivell-sim"
 version = "0.1.0"
 dependencies = [
  "casivell-core",
+ "casivell-income",
  "casivell-lawdata",
  "casivell-payroll",
  "casivell-projection",
  "casivell-social",
+ "casivell-tax",
 ]
 
 [[package]]

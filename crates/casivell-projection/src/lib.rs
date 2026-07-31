@@ -179,6 +179,7 @@ pub fn project(year: TaxYear, assumptions: &Assumptions) -> Result<LawYear, Proj
         // an assumption however stable the rate has been.
         church_tax: parameters::carry_forward_church_tax(&base.church_tax, year),
         retirement: parameters::carry_forward_retirement(&base.retirement, year),
+        deductions: parameters::project_deductions(&base.deductions, year, steps, assumptions)?,
     })
 }
 

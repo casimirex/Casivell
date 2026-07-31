@@ -22,6 +22,11 @@ pub(crate) struct YearRow {
     gross: Money,
     net: Money,
     savings: Money,
+    /// Every annual settlement received since the previous row.
+    ///
+    /// Accumulated rather than sampled: a settlement lands in July and a row is written in
+    /// December, so a row that only read its own month would always show zero.
+    settled: Money,
     wealth: Money,
     pension_points: i64,
     accrued_pension: Money,
@@ -36,6 +41,8 @@ pub(crate) struct YearlySink {
     rows: [Option<YearRow>; Self::MAX_ROWS],
     count: usize,
     months: u32,
+    /// Settlements seen since the last row was written.
+    settled: Money,
 }
 
 impl YearlySink {
@@ -47,6 +54,7 @@ impl YearlySink {
             rows: [None; Self::MAX_ROWS],
             count: 0,
             months: 0,
+            settled: Money::ZERO,
         }
     }
 
@@ -64,6 +72,12 @@ impl YearlySink {
 impl Sink for YearlySink {
     fn accept(&mut self, snapshot: &MonthSnapshot) -> bool {
         self.months = self.months.saturating_add(1);
+        // Saturating: a report losing precision at the domain edge is better than a
+        // projection that aborts. The per-month figures stay exact.
+        self.settled = self
+            .settled
+            .add(snapshot.tax_settlement)
+            .unwrap_or(self.settled);
 
         // Keep the twelfth month of each simulated year, and always the very last one, so a
         // horizon that is not a whole number of years still shows its end state.
@@ -77,6 +91,7 @@ impl Sink for YearlySink {
                 gross: snapshot.gross,
                 net: snapshot.net,
                 savings: snapshot.savings,
+                settled: self.settled,
                 wealth: snapshot.wealth,
                 pension_points: snapshot.pension_points.micro(),
                 accrued_pension: snapshot.accrued_pension,
@@ -84,6 +99,7 @@ impl Sink for YearlySink {
             });
             self.count = self.count.saturating_add(1);
         }
+        self.settled = Money::ZERO;
         true
     }
 }
@@ -102,7 +118,7 @@ pub(crate) fn render(
     write_header(&mut out, household, config, sink)?;
     write_events(&mut out, household)?;
     write_table(&mut out, sink)?;
-    write_notes(&mut out, config);
+    write_notes(&mut out, household, config);
     Ok(out)
 }
 
@@ -212,9 +228,9 @@ fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
 fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
     let _ = writeln!(
         out,
-        "  Year   Gross/mo      Net/mo   Saved/mo        Wealth    Points   Pension/mo"
+        "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth    Points   Pension/mo"
     );
-    let _ = writeln!(out, "  {}", "─".repeat(74));
+    let _ = writeln!(out, "  {}", "─".repeat(87));
 
     let mut law_ended = false;
     for row in sink.rows() {
@@ -229,11 +245,12 @@ fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
         }
         let _ = writeln!(
             out,
-            "  {:>4}  {:>9}  {:>10}  {:>9}  {:>12}  {:>8}  {:>11}",
+            "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
             row.year,
             euro(row.gross)?,
             euro(row.net)?,
             euro(row.savings)?,
+            euro(row.settled)?,
             euro(row.wealth)?,
             points(row.pension_points),
             euro(row.accrued_pension)?,
@@ -251,7 +268,7 @@ fn points(micro: i64) -> String {
     format!("{whole},{fraction:02}")
 }
 
-fn write_notes(out: &mut String, config: &SimulationConfig) {
+fn write_notes(out: &mut String, household: &Household, config: &SimulationConfig) {
     let _ = writeln!(out, "  Notes");
     if config.basis == Basis::Nominal {
         let _ = writeln!(
@@ -271,13 +288,28 @@ fn write_notes(out: &mut String, config: &SimulationConfig) {
         out,
         "    Rentenwert then in force, with no early-claim reduction applied."
     );
+    match casivell_sim::filing_status_for(&household.employment) {
+        Ok(_) => {
+            let _ = writeln!(
+                out,
+                "  · Tax shown is withholding. The annual assessment settles the difference,"
+            );
+            let _ = writeln!(
+                out,
+                "    and its refund or demand lands the following July in the Settle column."
+            );
+        }
+        Err(reason) => {
+            let _ = writeln!(out, "  · No annual assessment is shown, because {reason}.");
+            let _ = writeln!(
+                out,
+                "    Tax is withholding only; any refund it would produce is not included."
+            );
+        }
+    }
     let _ = writeln!(
         out,
-        "  · Not modelled: children, property, career breaks, capital income, one-off"
-    );
-    let _ = writeln!(
-        out,
-        "    payments, or the annual assessment's refund. One steady employment only."
+        "  · Not modelled: property, capital income, or income other than this employment."
     );
     let _ = writeln!(out, "\n  Not tax or investment advice.\n");
 }

@@ -20,8 +20,9 @@
 
 use casivell_core::{Money, TaxYear};
 use casivell_lawdata::{
-    CareInsurance, ChurchTaxParameters, DataStatus, HealthInsurance, PensionInsurance, Provenance,
-    RetirementParameters, SocialParameters, SolidarityParameters, UnemploymentInsurance,
+    CareInsurance, ChurchTaxParameters, DataStatus, DeductionParameters, HealthInsurance,
+    PensionInsurance, Provenance, RetirementParameters, SocialParameters, SolidarityParameters,
+    UnemploymentInsurance,
 };
 
 use crate::ProjectionError;
@@ -37,6 +38,13 @@ const PENSION_CEILING_GRID_EURO: i64 = 600;
 ///
 /// Verifiable against the enacted figure: 69 750 = 155 × 450.
 const HEALTH_CEILING_GRID_EURO: i64 = 450;
+
+/// The miners' pension ceiling sits on the same § 159 SGB VI grid as the general one.
+///
+/// Verifiable against the enacted figure: 124 800 = 208 × 600. Stated separately from
+/// [`PENSION_CEILING_GRID_EURO`] because the two are different *series* on a shared grid,
+/// and conflating them is precisely the mistake `retirement_provision_cap` exists to avoid.
+const MINERS_CEILING_GRID_EURO: i64 = 600;
 
 /// Months in a year, for converting between the monthly and annual forms the statute
 /// uses for different ceilings.
@@ -92,6 +100,9 @@ fn concat_basis(what: &'static str, note: &'static str) -> &'static str {
         }
         ("retirement, carried forward", _) => {
             "§§ 77, 235 SGB VI, assumed unchanged from 2026 (NOT enacted law)"
+        }
+        ("deductions, projected", _) => {
+            "§§ 9a, 10, 10c, 20 Abs. 9, 32 Abs. 6, 32d, 66 EStG; allowances projected from 2026 under stated price inflation, caps and rates assumed unchanged (NOT enacted law)"
         }
         (other, _) => other,
     }
@@ -210,6 +221,105 @@ pub(crate) fn project_solidarity(
     })
 }
 
+/// Projects the deduction parameters of §§ 9a, 10, 10c, 20 Abs. 9, 32 Abs. 6, 32d and 66.
+///
+/// # What moves, and why consistency decides the hard case
+///
+/// **Indexed to prices.** The Kinderfreibetrag, the BEA-Freibetrag, the Kindergeld and both
+/// Pauschbeträge. § 32 Abs. 6 ties the child allowance to the sächliches Existenzminimum,
+/// which the Existenzminimumbericht resets on the same cycle that moves the Grundfreibetrag,
+/// so it travels with the tariff. Kindergeld is indexed with it because § 31 makes the two a
+/// single mechanism: letting the allowance rise while the benefit stood still would slowly
+/// and silently flip the Günstigerprüfung for every family.
+///
+/// **Indexed to wages.** The miners' pension ceiling, which the SVBezGrV sets annually from
+/// average earnings exactly as it sets the general one, on the same § 159 SGB VI grid. This
+/// matters more than its obscurity suggests: it is the sole determinant of the Altersvorsorge
+/// cap, which is the binding constraint on most employees' largest deduction.
+///
+/// **Carried forward.** Every rate, and the § 10 Abs. 4 caps and Sparer-Pauschbetrag. None
+/// has an indexation rule, and each moves only when the legislature decides it does.
+///
+/// # The Pauschbeträge are indexed, and the reason is not aesthetic
+///
+/// § 9a and § 10c set fixed nominal amounts with no indexation rule, so the crate's usual
+/// principle would carry them forward. They are indexed anyway, because they are not this
+/// module's alone: [`crate::project_payroll`] needs the very same two figures for the
+/// Programmablaufplan, and `casivell-lawdata` asserts that the two tables agree on them in
+/// every enacted year. A projection that broke that agreement would have withholding and the
+/// annual assessment using different Pauschbeträge in the same simulated month.
+///
+/// That is not a rounding difference. Carrying them forward here while the PAP indexed them
+/// made a household's Steuerbescheid drift by roughly ten euro a year, compounding into a
+/// demand of 169 € after twenty years that no statute produced — an artefact of two modules
+/// disagreeing. `the_two_paths_project_the_same_pauschbetraege` now holds them equal at every
+/// horizon, so the disagreement cannot come back.
+///
+/// Between two defensible conventions, the one that keeps the whole system consistent wins;
+/// and indexing is independently the better guess, since the Arbeitnehmer-Pauschbetrag has in
+/// fact been raised repeatedly (1 000 → 1 200 → 1 230 €) rather than left to erode.
+///
+/// # Errors
+///
+/// [`ProjectionError::Arithmetic`] on a domain violation.
+pub(crate) fn project_deductions(
+    base: &DeductionParameters,
+    year: TaxYear,
+    steps: u32,
+    assumptions: &Assumptions,
+) -> Result<DeductionParameters, ProjectionError> {
+    let prices = assumptions.price_inflation();
+    let wages = assumptions.wage_growth();
+
+    // Grown as a total and then split, rather than grown part by part. The PAP carries only
+    // the total, and two separately rounded halves need not sum to a separately rounded
+    // whole — so the total is the figure indexed, and the split follows from it.
+    let child_total = grow_euro(
+        base.child_allowance_total()
+            .map_err(ProjectionError::Arithmetic)?,
+        prices,
+        steps,
+    )?;
+    let child_care = grow_euro(base.child_allowance_care, prices, steps)?;
+
+    Ok(DeductionParameters {
+        year,
+
+        // Indexed to keep step with the Programmablaufplan; see above.
+        employee_lump_sum: grow_euro(base.employee_lump_sum, prices, steps)?,
+        special_expenses_lump_sum: grow_euro(base.special_expenses_lump_sum, prices, steps)?,
+
+        miners_pension_ceiling_annual: compound_to_multiple(
+            base.miners_pension_ceiling_annual,
+            wages,
+            steps,
+            MINERS_CEILING_GRID_EURO,
+        )
+        .map_err(ProjectionError::Arithmetic)?,
+        miners_pension_rate: base.miners_pension_rate,
+
+        other_provision_cap: base.other_provision_cap,
+        other_provision_cap_employee: base.other_provision_cap_employee,
+        sick_pay_reduction: base.sick_pay_reduction,
+
+        child_allowance_material: child_total
+            .sub(child_care)
+            .map_err(ProjectionError::Arithmetic)?,
+        child_allowance_care: child_care,
+        // Kindergeld has only ever been set in whole euro, so it is indexed on that grid.
+        child_benefit_monthly: grow_euro(base.child_benefit_monthly, prices, steps)?,
+
+        saver_allowance: base.saver_allowance,
+        capital_income_rate: base.capital_income_rate,
+
+        provenance: projected_provenance(
+            "deductions, projected",
+            base.provenance.source_url,
+            assumptions,
+        ),
+    })
+}
+
 /// Carries the church tax rates forward with their status downgraded.
 ///
 /// The rates have been 8 % and 9 % for decades, but asserting they still hold in 2060 is
@@ -284,13 +394,15 @@ fn project_ceiling(
 #[cfg(test)]
 mod tests {
     use super::{
-        HEALTH_CEILING_GRID_EURO, PENSION_CEILING_GRID_EURO, carry_forward_church_tax,
-        carry_forward_retirement, project_social, project_solidarity,
+        HEALTH_CEILING_GRID_EURO, MINERS_CEILING_GRID_EURO, PENSION_CEILING_GRID_EURO,
+        carry_forward_church_tax, carry_forward_retirement, project_deductions, project_social,
+        project_solidarity,
     };
     use crate::assumptions::Assumptions;
     use casivell_core::TaxYear;
     use casivell_lawdata::{
-        ChurchTaxParameters, RetirementParameters, SocialParameters, SolidarityParameters,
+        ChurchTaxParameters, DeductionParameters, RetirementParameters, SocialParameters,
+        SolidarityParameters,
     };
 
     fn year(value: u16) -> TaxYear {
@@ -517,6 +629,154 @@ mod tests {
             year(2040),
         );
         assert!(!retirement.provenance.status.is_binding_law());
+
+        let deductions =
+            project_deductions(&base_deductions(), year(2040), 14, &assumptions).expect("c");
+        assert!(!deductions.provenance.status.is_binding_law());
+    }
+
+    // ---------------------------------------------------------------------
+    // Deductions
+    // ---------------------------------------------------------------------
+
+    fn base_deductions() -> DeductionParameters {
+        DeductionParameters::for_year(TaxYear::LAST_VERIFIED).expect("enacted")
+    }
+
+    #[test]
+    fn frozen_assumptions_reproduce_the_base_deductions() {
+        let base = base_deductions();
+        let projected =
+            project_deductions(&base, year(2060), 34, &Assumptions::frozen()).expect("projects");
+
+        assert_eq!(
+            projected.miners_pension_ceiling_annual,
+            base.miners_pension_ceiling_annual
+        );
+        assert_eq!(
+            projected.child_allowance_material,
+            base.child_allowance_material
+        );
+        assert_eq!(projected.child_benefit_monthly, base.child_benefit_monthly);
+        assert_eq!(
+            projected.retirement_provision_cap().expect("in domain"),
+            base.retirement_provision_cap().expect("in domain")
+        );
+    }
+
+    /// The projected miners' ceiling must stay on its § 159 SGB VI grid at every horizon.
+    /// An off-grid ceiling would be a visibly invented figure, and it feeds the
+    /// Altersvorsorge cap — the binding constraint on most employees' largest deduction.
+    #[test]
+    fn the_projected_miners_ceiling_stays_on_its_grid() {
+        let base = base_deductions();
+        for steps in 0_u32..=44 {
+            let projected =
+                project_deductions(&base, projected_year(steps), steps, &Assumptions::default())
+                    .expect("projects");
+            let annual = projected
+                .miners_pension_ceiling_annual
+                .whole_euro_floor()
+                .expect("in domain");
+            assert_eq!(
+                annual % MINERS_CEILING_GRID_EURO,
+                0,
+                "after {steps} steps the miners' ceiling {annual} is off the grid"
+            );
+        }
+    }
+
+    /// Every rate must survive a deduction projection untouched, for the same reason every
+    /// contribution rate does: there is no indexation rule for a rate.
+    #[test]
+    fn every_deduction_rate_is_held_constant() {
+        let base = base_deductions();
+        let projected =
+            project_deductions(&base, year(2070), 44, &Assumptions::default()).expect("projects");
+        assert_eq!(projected.miners_pension_rate, base.miners_pension_rate);
+        assert_eq!(projected.capital_income_rate, base.capital_income_rate);
+        assert_eq!(projected.sick_pay_reduction, base.sick_pay_reduction);
+    }
+
+    /// The child figures move together and monotonically. § 31 makes the allowance and the
+    /// benefit one mechanism, so letting them drift apart would slowly flip the
+    /// Günstigerprüfung for every family — a policy change nobody chose.
+    #[test]
+    fn the_child_figures_grow_together_and_monotonically() {
+        let base = base_deductions();
+        let (mut allowance, mut benefit) =
+            (base.child_allowance_material, base.child_benefit_monthly);
+        for steps in 1_u32..=40 {
+            let projected =
+                project_deductions(&base, projected_year(steps), steps, &Assumptions::default())
+                    .expect("projects");
+            assert!(
+                projected.child_allowance_material >= allowance,
+                "fell at {steps}"
+            );
+            assert!(
+                projected.child_benefit_monthly >= benefit,
+                "fell at {steps}"
+            );
+            allowance = projected.child_allowance_material;
+            benefit = projected.child_benefit_monthly;
+        }
+        assert!(allowance > base.child_allowance_material);
+        assert!(benefit > base.child_benefit_monthly);
+    }
+
+    /// The guard for the bug this test was written after finding.
+    ///
+    /// The Programmablaufplan and the § 2 chain need the *same* two Pauschbeträge, and
+    /// `casivell-lawdata` asserts they agree in every enacted year. When this module carried
+    /// them forward while `project_payroll` indexed them, withholding and the annual
+    /// assessment used different figures in the same simulated month, and a household's
+    /// Steuerbescheid drifted by about ten euro a year — reaching a 169 € demand after twenty
+    /// years that no statute produced.
+    ///
+    /// Checked at every horizon rather than at one, because the failure grew with distance
+    /// and a single spot check near 2026 would have passed.
+    #[test]
+    fn the_two_paths_project_the_same_pauschbetraege() {
+        use casivell_lawdata::PayrollParameters;
+
+        let assumptions = Assumptions::default();
+        let base_pap = PayrollParameters::for_year(TaxYear::LAST_VERIFIED).expect("enacted");
+        let base_social = base_social();
+        let base_tariff =
+            casivell_lawdata::IncomeTaxTariff::for_year(TaxYear::LAST_VERIFIED).expect("enacted");
+
+        for steps in 0_u32..=44 {
+            let year = projected_year(steps);
+            let social = project_social(&base_social, year, steps, &assumptions).expect("social");
+            let tariff = crate::tariff::project_tariff(&base_tariff, year, steps, &assumptions)
+                .expect("tariff");
+            let pap = crate::payroll::project_payroll(
+                &base_pap,
+                &social,
+                &tariff,
+                year,
+                steps,
+                &assumptions,
+            )
+            .expect("pap");
+            let deductions =
+                project_deductions(&base_deductions(), year, steps, &assumptions).expect("d");
+
+            assert_eq!(
+                pap.employee_lump_sum, deductions.employee_lump_sum,
+                "the Arbeitnehmer-Pauschbetrag diverged after {steps} steps"
+            );
+            assert_eq!(
+                pap.special_expenses_lump_sum, deductions.special_expenses_lump_sum,
+                "the Sonderausgaben-Pauschbetrag diverged after {steps} steps"
+            );
+            assert_eq!(
+                pap.child_allowance_full,
+                deductions.child_allowance_total().expect("in domain"),
+                "the Kinderfreibetrag diverged after {steps} steps"
+            );
+        }
     }
 
     /// Every projected provenance must say it is not enacted law, in words, because a
@@ -526,9 +786,12 @@ mod tests {
         let assumptions = Assumptions::default();
         let social = project_social(&base_social(), year(2040), 14, &assumptions).expect("a");
         let soli = project_solidarity(&base_solidarity(), year(2040), 14, &assumptions).expect("b");
+        let deductions =
+            project_deductions(&base_deductions(), year(2040), 14, &assumptions).expect("c");
         for basis in [
             social.pension.provenance.legal_basis,
             soli.provenance.legal_basis,
+            deductions.provenance.legal_basis,
         ] {
             assert!(
                 basis.contains("NOT enacted law"),

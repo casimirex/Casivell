@@ -113,6 +113,7 @@ impl DeductionParameters {
     /// [`MoneyError::YearOutOfRange`] if no verified set exists.
     pub const fn for_year(year: TaxYear) -> Result<Self, MoneyError> {
         match year.get() {
+            2025 => Ok(DEDUCTIONS_2025),
             2026 => Ok(DEDUCTIONS_2026),
             other => Err(MoneyError::YearOutOfRange { year: other }),
         }
@@ -177,6 +178,42 @@ const fn year(value: u16) -> TaxYear {
     }
 }
 
+/// Deduction parameters for 2025.
+///
+/// Only three figures differ from 2026, and all three are the indexed ones: the miners'
+/// ceiling (and so the Altersvorsorge cap, 29 344 € against 30 826 €), the sächlicher
+/// Kinderfreibetrag, and the Kindergeld. The Pauschbeträge, the caps and every rate are
+/// identical in both years — which is the observation the projection rests on.
+const DEDUCTIONS_2025: DeductionParameters = DeductionParameters {
+    year: year(2025),
+
+    employee_lump_sum: euro(1_230),
+    special_expenses_lump_sum: euro(36),
+
+    // 118 800 × 24.7 % = 29 343.60, rounded up to the published 29 344 €.
+    miners_pension_ceiling_annual: euro(118_800),
+    miners_pension_rate: pct_milli(24_700),
+
+    other_provision_cap: euro(2_800),
+    other_provision_cap_employee: euro(1_900),
+    sick_pay_reduction: pct_milli(4_000),
+
+    // 6 672 + 2 928 = 9 600 for both parents together.
+    child_allowance_material: euro(6_672),
+    child_allowance_care: euro(2_928),
+    child_benefit_monthly: euro(255),
+
+    saver_allowance: euro(1_000),
+    capital_income_rate: pct_milli(25_000),
+
+    provenance: Provenance::new(
+        "§ 9a, § 10 Abs. 1 Nr. 2-3a, § 10 Abs. 3-4, § 10c, § 20 Abs. 9, § 32 Abs. 6, § 32d, § 66 EStG",
+        "https://www.gesetze-im-internet.de/estg/__10.html",
+        "2026-07-31",
+        DataStatus::Enacted,
+    ),
+};
+
 /// Deduction parameters for 2026.
 const DEDUCTIONS_2026: DeductionParameters = DeductionParameters {
     year: year(2026),
@@ -208,7 +245,7 @@ const DEDUCTIONS_2026: DeductionParameters = DeductionParameters {
 
 #[cfg(test)]
 mod tests {
-    use super::{DEDUCTIONS_2026, DeductionParameters};
+    use super::{DEDUCTIONS_2025, DEDUCTIONS_2026, DeductionParameters};
     use casivell_core::{Money, Rate, TaxYear};
 
     #[test]
@@ -363,9 +400,100 @@ mod tests {
     }
 
     #[test]
-    fn only_2026_is_available_and_other_years_are_refused() {
+    fn both_verified_years_are_available_and_others_are_refused() {
+        assert!(DeductionParameters::for_year(TaxYear::new(2025).unwrap()).is_ok());
         assert!(DeductionParameters::for_year(TaxYear::new(2026).unwrap()).is_ok());
-        assert!(DeductionParameters::for_year(TaxYear::new(2025).unwrap()).is_err());
+        assert!(DeductionParameters::for_year(TaxYear::new(2027).unwrap()).is_err());
+        assert!(DeductionParameters::for_year(TaxYear::new(2100).unwrap()).is_err());
+    }
+
+    /// 2025's cap must come out of the same derivation as 2026's: 118 800 × 24.7 % =
+    /// 29 343.60, rounded up to the published 29 344 €. Two years reproducing their
+    /// published figures from one formula is what makes the formula trustworthy for the
+    /// projected years, where no published figure exists to check against.
+    #[test]
+    fn the_2025_cap_is_derived_from_its_own_ceiling() {
+        let cap = DEDUCTIONS_2025
+            .retirement_provision_cap()
+            .expect("in domain");
+        assert_eq!(cap, Money::from_euro(29_344).expect("valid"));
+        assert!(
+            cap < DEDUCTIONS_2026
+                .retirement_provision_cap()
+                .expect("in domain"),
+            "the cap rises with the ceiling"
+        );
+    }
+
+    /// Exactly the indexed figures move between the two enacted years, and exactly the
+    /// structural ones do not. This is the empirical basis for how the projection treats
+    /// each group, so it is asserted rather than assumed.
+    #[test]
+    fn only_the_indexed_figures_differ_between_the_two_enacted_years() {
+        let (a, b) = (DEDUCTIONS_2025, DEDUCTIONS_2026);
+
+        // Indexed: these must have moved, and upward.
+        assert!(b.miners_pension_ceiling_annual > a.miners_pension_ceiling_annual);
+        assert!(b.child_allowance_material > a.child_allowance_material);
+        assert!(b.child_benefit_monthly > a.child_benefit_monthly);
+
+        // Structural: these must be identical.
+        assert_eq!(a.employee_lump_sum, b.employee_lump_sum);
+        assert_eq!(a.special_expenses_lump_sum, b.special_expenses_lump_sum);
+        assert_eq!(a.other_provision_cap, b.other_provision_cap);
+        assert_eq!(
+            a.other_provision_cap_employee,
+            b.other_provision_cap_employee
+        );
+        assert_eq!(a.saver_allowance, b.saver_allowance);
+        assert_eq!(a.miners_pension_rate, b.miners_pension_rate);
+        assert_eq!(a.capital_income_rate, b.capital_income_rate);
+        assert_eq!(a.sick_pay_reduction, b.sick_pay_reduction);
+        // The BEA-Freibetrag has been 2 928 € since 2021 and did not move either, which is
+        // why only the *sächlicher* part is asserted to have risen above.
+        assert_eq!(a.child_allowance_care, b.child_allowance_care);
+    }
+
+    /// The miners' ceiling and the general pension ceiling must move as one series, because
+    /// the SVBezGrV derives both from the same average earnings.
+    ///
+    /// Between the two enacted years the general ceiling rose 96 600 → 101 400 (+4.97 %) and
+    /// the miners' 118 800 → 124 800 (+5.05 %) — within a tenth of a percentage point. That
+    /// agreement is the evidence for indexing the miners' ceiling to *wage* growth in
+    /// `casivell-projection`, where no published figure exists to check a projection against.
+    #[test]
+    fn the_miners_ceiling_tracks_the_general_pension_ceiling() {
+        use crate::social::SocialParameters;
+
+        let annual = |y: u16| {
+            SocialParameters::for_year(TaxYear::new(y).unwrap())
+                .expect("enacted")
+                .pension
+                .ceiling_monthly
+                .mul_int(12)
+                .expect("in domain")
+                .cents()
+        };
+
+        // Growth of each series in parts per million, compared without floating point.
+        let general = annual(2026) * 1_000_000 / annual(2025);
+        let miners = DEDUCTIONS_2026.miners_pension_ceiling_annual.cents() * 1_000_000
+            / DEDUCTIONS_2025.miners_pension_ceiling_annual.cents();
+
+        assert!(
+            (general - miners).abs() < 2_000,
+            "the two ceilings grew by {general} and {miners} ppm, which is too far apart \
+             for one indexation rule to cover both"
+        );
+    }
+
+    /// The 2025 total must be the published 9 600 € for both parents.
+    #[test]
+    fn the_2025_child_allowance_totals_the_published_figure() {
+        assert_eq!(
+            DEDUCTIONS_2025.child_allowance_total().expect("in domain"),
+            Money::from_euro(9_600).expect("valid")
+        );
     }
 
     #[test]

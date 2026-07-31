@@ -91,6 +91,8 @@ pub struct LawYear {
     pub church_tax: ChurchTaxParameters,
     /// Retirement age and Zugangsfaktor parameters, SGB VI.
     pub retirement: RetirementParameters,
+    /// Deductions between gross pay and taxable income, §§ 9a, 10, 32 Abs. 6, 66 EStG.
+    pub deductions: DeductionParameters,
 }
 
 impl LawYear {
@@ -122,6 +124,10 @@ impl LawYear {
             Ok(r) => r,
             Err(e) => return Err(e),
         };
+        let deductions = match DeductionParameters::for_year(year) {
+            Ok(d) => d,
+            Err(e) => return Err(e),
+        };
         Ok(Self {
             year,
             income_tax,
@@ -129,6 +135,7 @@ impl LawYear {
             solidarity,
             church_tax,
             retirement,
+            deductions,
         })
     }
 
