@@ -427,7 +427,11 @@ this computed against?**
       enacted year's does not move, because no assumption enters it.
 - [x] **A scenario file**, with a schema version and the digest inside it. `--save FILE` on
       any form; `casivell replay FILE` re-runs it and says whether the law has moved.
-- [ ] The scenario DAG: variants branching off a base.
+- [x] **Scenario comparison**: `casivell compare a b`, two saved projections side by side.
+- [ ] ~~The scenario DAG~~ — **reduced deliberately.** What a household wants from "variants
+      branching off a base" is to see two plans against each other, and that needs two files
+      and a comparison, not a graph. A DAG is structure without a consumer until there is a UI
+      driving it; building it now would be inventing a requirement.
 
 **A scenario is an invocation plus a Datenstand, not a serialised struct.** The obvious design
 is to serialise the household, the config and the schedule. That design drifts: every field
@@ -443,6 +447,25 @@ than defaulted. A defaulted scenario computes something nobody asked for. A *cha
 by contrast, is a warning and not an error — the household still wants its numbers, it just
 needs to know they are not the numbers it saved. The warning prints **before** the report,
 because a caveat after several screens of figures is a caveat nobody reads.
+
+**Comparison re-runs rather than diffing text.** Diffing two rendered reports would be at the
+mercy of column widths, would flag every year that moved by a cent, and would say nothing about
+*how much* two plans differ — which is the only question anyone asks. Both scenarios go back
+through the kernel and their summaries are compared, so the output is the handful of figures a
+decision turns on, each with its difference.
+
+Two checks, and only one is a refusal. Both files must be **projections**, because a payslip
+and a forty-year plan share no figures and there is nothing to render. They *should* rest on
+the same statutory data, and that is a warning at the top: comparing across a change in the law
+attributes to the household's choices a difference that is partly the tables moving underneath.
+Re-saving both fixes it, so the figures still follow.
+
+**A comparison worth having.** Renting against buying, on 6 000 € a month over twenty-five
+years at a 5 % return and 2 % property growth: buying ends **128 918 € behind** on net worth,
+and 636 714 € behind on liquid wealth, having paid **183 253 € of mortgage interest**. Tax,
+contributions and pension are identical to the cent, which is the check that the difference is
+the housing decision and nothing else. And the buyer's lowest point is 16 323 € *below zero* —
+a plan that passed through insolvency, which an end state alone would have hidden.
 
 **The maintenance hazard, and what guards it.** A field added to a parameter set and not added
 to its digest would be invisible — scenarios would claim a reproducibility they no longer have.

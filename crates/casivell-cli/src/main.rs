@@ -34,6 +34,7 @@
 mod args;
 mod assess_report;
 mod classes_report;
+mod compare_report;
 mod format;
 mod law_report;
 mod project_report;
@@ -52,7 +53,7 @@ use casivell_lawdata::{LawYear, PropertyCostParameters};
 use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
 use casivell_property::{MortgageTerms, amortise, purchase_costs};
-use casivell_sim::{Household, SimulationConfig, simulate};
+use casivell_sim::{Household, SimulationConfig, Summary, simulate};
 use casivell_social::Insured;
 use casivell_tax::FilingStatus;
 
@@ -133,6 +134,7 @@ LAW OPTIONS
 SCENARIOS
   --save <file>         Write this invocation and the statutory Datenstand
   casivell replay <file>  Re-run it, warning if the law has changed since
+  casivell compare <a> <b>  Two saved projections side by side
 
 EXAMPLES
   casivell --gross 4500 --class 1
@@ -141,6 +143,7 @@ EXAMPLES
   casivell classes --gross 5000 --partner 1800 --class 4
   casivell project --gross 6000 --class 1 --expenses 1500 --save plan.casivell
   casivell replay plan.casivell
+  casivell compare rent.casivell buy.casivell
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
   casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
@@ -168,6 +171,7 @@ fn main() -> ExitCode {
 
     let outcome = match argv.first().map(String::as_str) {
         Some("replay") => run_replay(argv.get(1..).unwrap_or_default()),
+        Some("compare") => run_compare(argv.get(1..).unwrap_or_default()),
         _ => run_and_maybe_save(argv),
     };
 
@@ -532,6 +536,18 @@ fn run_law(argv: Vec<String>) -> Result<String, String> {
 
 /// Projects a household forward and renders the result.
 fn run_project(argv: Vec<String>) -> Result<String, String> {
+    let (household, config) = project_inputs(argv)?;
+    let mut sink = project_report::YearlySink::new();
+    simulate(&household, &config, &mut sink).map_err(|e| e.to_string())?;
+    project_report::render(&household, &config, &sink).map_err(|e| e.to_string())
+}
+
+/// Builds the household and configuration a `project` invocation describes.
+///
+/// Split out so `compare` can run two of them through the kernel and read the summaries,
+/// rather than diffing two rendered reports — a textual diff would be at the mercy of column
+/// widths and would say nothing about *how much* the scenarios differ.
+fn project_inputs(argv: Vec<String>) -> Result<(Household, SimulationConfig), String> {
     let request = args::parse_project(argv).map_err(|e| e.to_string())?;
     let base = request.base;
 
@@ -555,17 +571,46 @@ fn run_project(argv: Vec<String>) -> Result<String, String> {
     // anyone means.
     household.annual_expense_growth = request.assumptions.price_inflation();
 
-    let config = SimulationConfig {
-        horizon: request.horizon,
-        assumptions: request.assumptions,
-        investment_return: request.investment_return,
-        basis: request.basis,
-        property_growth: request.property_growth,
+    Ok((
+        household,
+        SimulationConfig {
+            horizon: request.horizon,
+            assumptions: request.assumptions,
+            investment_return: request.investment_return,
+            basis: request.basis,
+            property_growth: request.property_growth,
+        },
+    ))
+}
+
+/// Compares two saved scenarios.
+fn run_compare(argv: &[String]) -> Result<String, String> {
+    let (Some(left), Some(right)) = (argv.first(), argv.get(1)) else {
+        return Err("compare needs two files: casivell compare <a> <b>".to_owned());
     };
 
-    let mut sink = project_report::YearlySink::new();
-    simulate(&household, &config, &mut sink).map_err(|e| e.to_string())?;
-    project_report::render(&household, &config, &sink).map_err(|e| e.to_string())
+    let load = |path: &String| -> Result<(scenario::Scenario, Summary), String> {
+        let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+        let saved = scenario::Scenario::from_text(&text)?;
+        if saved.form.as_deref() != Some("project") {
+            return Err(format!(
+                "{path} is not a projection. Comparison is only meaningful between two \
+                 projections — a payslip and a forty-year plan have no common figures."
+            ));
+        }
+        let (household, config) = project_inputs(saved.args.clone())?;
+        let mut summary = Summary::default();
+        simulate(&household, &config, &mut summary).map_err(|e| e.to_string())?;
+        Ok((saved, summary))
+    };
+
+    let (left_saved, left_summary) = load(left)?;
+    let (right_saved, right_summary) = load(right)?;
+    compare_report::render(
+        (left, &left_saved, &left_summary),
+        (right, &right_saved, &right_summary),
+    )
+    .map_err(|e| e.to_string())
 }
 
 /// Parses, computes and renders. Returns a message suitable for stderr on failure.
