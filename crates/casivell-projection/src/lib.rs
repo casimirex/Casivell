@@ -180,6 +180,7 @@ pub fn project(year: TaxYear, assumptions: &Assumptions) -> Result<LawYear, Proj
         church_tax: parameters::carry_forward_church_tax(&base.church_tax, year),
         retirement: parameters::carry_forward_retirement(&base.retirement, year),
         deductions: parameters::project_deductions(&base.deductions, year, steps, assumptions)?,
+        benefits: parameters::carry_forward_benefits(&base.benefits, year),
     })
 }
 

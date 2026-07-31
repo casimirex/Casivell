@@ -90,7 +90,7 @@ pub mod rng;
 pub mod timeline;
 
 pub use assessment::{AnnualSettlement, NoAssessment, SETTLEMENT_LAG_MONTHS, filing_status_for};
-pub use events::{Event, MonthInputs, Rebase, Schedule};
+pub use events::{Event, MonthInputs, ParentalLeaveMonth, Rebase, Schedule};
 pub use household::{Household, SimulationConfig};
 pub use monte_carlo::{Outcome, monte_carlo};
 pub use rng::Prng;

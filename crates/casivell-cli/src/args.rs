@@ -8,6 +8,7 @@
 
 use std::fmt;
 
+use casivell_benefits::Variant;
 use casivell_core::{Money, Rate};
 use casivell_lawdata::{Bundesland, TaxClass};
 use casivell_payroll::PayPeriod;
@@ -433,7 +434,12 @@ where
             "--return" => investment = parse_percent_millis(&flag, &mut iter)?,
             "--pay-growth" => pay_growth = parse_percent_millis(&flag, &mut iter)?,
             "--expenses" => expenses = Some(parse_money(&flag, &mut iter)?),
-            "--part-time" | "--break" | "--raise" | "--one-off" => {
+            "--part-time"
+            | "--break"
+            | "--raise"
+            | "--one-off"
+            | "--parental-leave"
+            | "--parental-leave-plus" => {
                 parse_event_flag(&flag, &mut iter, &mut schedule)?;
             }
             other => {
@@ -505,6 +511,24 @@ where
                 monthly_gross,
             }
         }
+        "--parental-leave" | "--parental-leave-plus" => {
+            // `FROM:MONTHS[:PERCENT]` — months rather than years, because parental leave is
+            // counted in Lebensmonate and a household says "fourteen months", never "1.17
+            // years". The optional percent is part-time work during the leave.
+            let spec = parse_leave_spec(flag, iter)?;
+            Event::ParentalLeave {
+                from_month: spec.from_month,
+                months: spec.months,
+                working_fraction: spec.working_fraction,
+                variant: if flag == "--parental-leave-plus" {
+                    Variant::Plus
+                } else {
+                    Variant::Basis
+                },
+                sibling_bonus: false,
+                additional_children: 0,
+            }
+        }
         _ => {
             let (month, amount) = parse_month_amount(flag, iter)?;
             Event::OneOff { month, amount }
@@ -520,6 +544,50 @@ fn schedule_error(flag: &str) -> ArgError {
         value: "too many events, or a window ending before it starts".to_owned(),
         expected: "at most 32 events, each ending after it starts".to_owned(),
     }
+}
+
+/// A parental leave specification.
+struct LeaveSpec {
+    from_month: u32,
+    months: u32,
+    working_fraction: Rate,
+}
+
+/// Parses `FROM:MONTHS[:PERCENT]`, where `FROM` is a year offset and `MONTHS` a count of
+/// Lebensmonate. `2:14` is "fourteen months from the start of year 2"; `2:14:50` adds
+/// half-time work throughout.
+fn parse_leave_spec<I>(flag: &str, iter: &mut I) -> Result<LeaveSpec, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "FROM:MONTHS[:PERCENT], e.g. 2:14 or 2:24:50".to_owned(),
+    };
+    let mut parts = raw.split(':');
+    let from = parts.next().ok_or_else(bad)?;
+    let months = parts.next().ok_or_else(bad)?;
+    let percent = parts.next();
+    if parts.next().is_some() {
+        return Err(bad());
+    }
+
+    let working_fraction = match percent {
+        None => Rate::ZERO,
+        Some(text) => {
+            let value: i64 = text.parse().map_err(|_| bad())?;
+            Rate::from_percent_millis(value.checked_mul(1_000).ok_or_else(bad)?)
+                .map_err(|_| bad())?
+        }
+    };
+
+    Ok(LeaveSpec {
+        from_month: years_to_months(from).ok_or_else(bad)?,
+        months: months.parse().map_err(|_| bad())?,
+        working_fraction,
+    })
 }
 
 /// A windowed event specification, `FROM:UNTIL:VALUE` in years.

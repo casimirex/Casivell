@@ -9,7 +9,8 @@
 
 use core::fmt::Write as _;
 
-use casivell_core::{Money, MoneyError};
+use casivell_benefits::Variant;
+use casivell_core::{Money, MoneyError, Rate};
 use casivell_lawdata::DataStatus;
 use casivell_sim::{Basis, Event, Household, MonthSnapshot, SimulationConfig, Sink};
 
@@ -22,6 +23,12 @@ pub(crate) struct YearRow {
     gross: Money,
     net: Money,
     savings: Money,
+    /// The monthly Elterngeld in force during this year, zero if none.
+    ///
+    /// The monthly figure rather than the year's total, so the column keeps the same units as
+    /// the ones beside it. Taken as the largest monthly amount seen in the year, which for a
+    /// benefit the BEEG fixes at the start of a leave is simply the benefit.
+    benefit: Money,
     /// Every annual settlement received since the previous row.
     ///
     /// Accumulated rather than sampled: a settlement lands in July and a row is written in
@@ -43,6 +50,8 @@ pub(crate) struct YearlySink {
     months: u32,
     /// Settlements seen since the last row was written.
     settled: Money,
+    /// The largest monthly benefit seen since the last row was written.
+    benefit: Money,
 }
 
 impl YearlySink {
@@ -55,6 +64,7 @@ impl YearlySink {
             count: 0,
             months: 0,
             settled: Money::ZERO,
+            benefit: Money::ZERO,
         }
     }
 
@@ -78,6 +88,7 @@ impl Sink for YearlySink {
             .settled
             .add(snapshot.tax_settlement)
             .unwrap_or(self.settled);
+        self.benefit = self.benefit.max(snapshot.parental_benefit);
 
         // Keep the twelfth month of each simulated year, and always the very last one, so a
         // horizon that is not a whole number of years still shows its end state.
@@ -91,6 +102,7 @@ impl Sink for YearlySink {
                 gross: snapshot.gross,
                 net: snapshot.net,
                 savings: snapshot.savings,
+                benefit: self.benefit,
                 settled: self.settled,
                 wealth: snapshot.wealth,
                 pension_points: snapshot.pension_points.micro(),
@@ -100,6 +112,7 @@ impl Sink for YearlySink {
             self.count = self.count.saturating_add(1);
         }
         self.settled = Money::ZERO;
+        self.benefit = Money::ZERO;
         true
     }
 }
@@ -213,6 +226,13 @@ fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
             year(month),
             euro(amount)?
         ),
+        Event::ParentalLeave {
+            from_month,
+            months,
+            working_fraction,
+            variant,
+            ..
+        } => describe_leave(from_month, months, working_fraction, variant, start_year)?,
         Event::OtherIncome {
             from_month,
             until_month,
@@ -225,12 +245,49 @@ fn describe(event: &Event, start_year: u16) -> Result<String, MoneyError> {
     })
 }
 
+/// Describes a parental leave. Split out of `describe` only to keep that function short.
+fn describe_leave(
+    from_month: u32,
+    months: u32,
+    working_fraction: Rate,
+    variant: Variant,
+    start_year: u16,
+) -> Result<String, MoneyError> {
+    let year =
+        |month: u32| u32::from(start_year).saturating_add(month.checked_div(12).unwrap_or(0));
+    let form = match variant {
+        Variant::Basis => "Basiselterngeld",
+        Variant::Plus => "ElterngeldPlus",
+    };
+    let hours = if working_fraction.is_zero() {
+        String::new()
+    } else {
+        format!(" at {} of full time", percent(working_fraction)?)
+    };
+    Ok(format!(
+        "{} to {}: parental leave, {form} for {months} months{hours}",
+        year(from_month),
+        year(from_month.saturating_add(months.saturating_sub(1)))
+    ))
+}
+
 fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
-    let _ = writeln!(
-        out,
-        "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth    Points   Pension/mo"
-    );
-    let _ = writeln!(out, "  {}", "─".repeat(87));
+    // The Elterngeld column earns its width only for a household that takes leave, so it is
+    // shown only then. A permanently empty column is noise in every other projection.
+    let show_benefit = sink.rows().any(|row| !row.benefit.is_zero());
+    let (heading, rule) = if show_benefit {
+        (
+            "  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo",
+            99,
+        )
+    } else {
+        (
+            "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth    Points   Pension/mo",
+            87,
+        )
+    };
+    let _ = writeln!(out, "{heading}");
+    let _ = writeln!(out, "  {}", "─".repeat(rule));
 
     let mut law_ended = false;
     for row in sink.rows() {
@@ -243,21 +300,61 @@ fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
             );
             law_ended = true;
         }
-        let _ = writeln!(
-            out,
-            "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
-            row.year,
-            euro(row.gross)?,
-            euro(row.net)?,
-            euro(row.savings)?,
-            euro(row.settled)?,
-            euro(row.wealth)?,
-            points(row.pension_points),
-            euro(row.accrued_pension)?,
-        );
+        if show_benefit {
+            let _ = writeln!(
+                out,
+                "  {:>4}  {:>9}  {:>10}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
+                row.year,
+                euro(row.gross)?,
+                euro(row.net)?,
+                euro(row.benefit)?,
+                euro(row.savings)?,
+                euro(row.settled)?,
+                euro(row.wealth)?,
+                points(row.pension_points),
+                euro(row.accrued_pension)?,
+            );
+        } else {
+            let _ = writeln!(
+                out,
+                "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
+                row.year,
+                euro(row.gross)?,
+                euro(row.net)?,
+                euro(row.savings)?,
+                euro(row.settled)?,
+                euro(row.wealth)?,
+                points(row.pension_points),
+                euro(row.accrued_pension)?,
+            );
+        }
     }
     let _ = writeln!(out);
     Ok(())
+}
+
+/// The caveats that apply only to a projection containing parental leave.
+fn write_leave_notes(out: &mut String, household: &Household) {
+    if !household
+        .schedule
+        .events()
+        .any(|event| matches!(event, Event::ParentalLeave { .. }))
+    {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "  · Elterngeld is tax-free but raises the rate on the rest of the year's income"
+    );
+    let _ = writeln!(
+        out,
+        "    (§ 32b EStG). That cost is inside the Settle column, a year later."
+    );
+    let _ = writeln!(
+        out,
+        "  · Kindererziehungszeiten (§ 56 SGB VI) are not modelled, so the pension cost"
+    );
+    let _ = writeln!(out, "    of the leave is overstated.");
 }
 
 /// Formats Entgeltpunkte with two decimals, as the DRV reports them.
@@ -307,6 +404,7 @@ fn write_notes(out: &mut String, household: &Household, config: &SimulationConfi
             );
         }
     }
+    write_leave_notes(out, household);
     let _ = writeln!(
         out,
         "  · Not modelled: property, capital income, or income other than this employment."

@@ -16,6 +16,7 @@ dependencies = [
 name = "casivell-cli"
 version = "0.1.0"
 dependencies = [
+ "casivell-benefits",
  "casivell-core",
  "casivell-lawdata",
  "casivell-payroll",
@@ -68,6 +69,7 @@ dependencies = [
 name = "casivell-sim"
 version = "0.1.0"
 dependencies = [
+ "casivell-benefits",
  "casivell-core",
  "casivell-income",
  "casivell-lawdata",

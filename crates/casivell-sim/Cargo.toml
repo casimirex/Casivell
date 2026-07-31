@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+casivell-benefits = { path = "../casivell-benefits" }
 casivell-core = { path = "../casivell-core" }
 casivell-income = { path = "../casivell-income" }
 casivell-lawdata = { path = "../casivell-lawdata" }

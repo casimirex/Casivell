@@ -41,6 +41,7 @@
 //! kept growing behind it, so after about twenty years at 2.8 % the "promotion" had quietly
 //! become a pay cut. A forty-year test caught it; no unit test would have.
 
+use casivell_benefits::Variant;
 use casivell_core::{Money, MoneyError, Rate, Rounding};
 
 /// A change to the household from some month onward.
@@ -116,6 +117,45 @@ pub enum Event {
         amount: Money,
     },
 
+    /// Parental leave with Elterngeld, for a number of Lebensmonate.
+    ///
+    /// The one event whose payment the kernel computes rather than being told: the amount
+    /// follows from the pre-birth salary through the BEEG, so a household states *when* and
+    /// *how* it takes leave, not how much it will receive.
+    ///
+    /// Unlike [`Event::OtherIncome`], the money is carried into the annual assessment as a
+    /// § 32b benefit, so the rate increase on the household's other income is modelled too.
+    /// That is the half of parental leave nobody budgets for: the benefit arrives untaxed all
+    /// year and the demand lands with the Steuerbescheid the following summer.
+    ///
+    /// # What this does not model
+    ///
+    /// **Kindererziehungszeiten.** § 56 SGB VI credits a parent with pension entitlement for
+    /// the first thirty-six months after a birth, worth about one Entgeltpunkt a year. Without
+    /// it the projection **overstates** the pension cost of taking leave. The direction is
+    /// stated because it matters: this is the one place where the model is currently
+    /// pessimistic rather than neutral.
+    ///
+    /// Health and care cover during the leave is not modelled either, for the same reason it
+    /// is not under [`Event::UnpaidLeave`].
+    ParentalLeave {
+        /// First month of the leave.
+        from_month: u32,
+        /// How many Lebensmonate are drawn.
+        months: u32,
+        /// The share of full-time pay still earned during the leave.
+        ///
+        /// Zero for a full break. Anything higher reduces the benefit through the § 2 Abs. 3
+        /// difference rule, and is what makes [`Variant::Plus`] worth choosing.
+        working_fraction: Rate,
+        /// Basiselterngeld or `ElterngeldPlus`.
+        variant: Variant,
+        /// Whether the § 2a Abs. 1 Geschwisterbonus applies.
+        sibling_bonus: bool,
+        /// Further children of a multiple birth, for the § 2a Abs. 4 supplement.
+        additional_children: u8,
+    },
+
     /// Income that is not employment income, for a period.
     ///
     /// Attracts no social insurance contributions and earns no Entgeltpunkte. Reported
@@ -153,6 +193,7 @@ impl Event {
             | Self::WorkingTime { from_month, .. }
             | Self::UnpaidLeave { from_month, .. }
             | Self::ExpenseChange { from_month, .. }
+            | Self::ParentalLeave { from_month, .. }
             | Self::OtherIncome { from_month, .. } => from_month,
             Self::OneOff { month, .. } => month,
         }
@@ -173,6 +214,9 @@ impl Event {
                 Some(end) => month_index < end,
                 None => true,
             },
+            Self::ParentalLeave {
+                from_month, months, ..
+            } => month_index < from_month.saturating_add(months),
             // Permanent changes stay in force once they start.
             Self::PayChange { .. } | Self::ExpenseChange { .. } => true,
         }
@@ -216,6 +260,30 @@ pub struct MonthInputs {
     pub employment_interrupted: bool,
     /// Whether hours were reduced this month.
     pub working_time_reduced: bool,
+    /// Parental leave active this month, if any.
+    ///
+    /// Carries what the *benefit* needs rather than the benefit itself: the amount depends on
+    /// the payroll law and the pre-birth salary, which the schedule does not hold. The kernel
+    /// computes it — see [`crate::assessment`] for why the schedule never computes money that
+    /// depends on statute.
+    pub parental_leave: Option<ParentalLeaveMonth>,
+}
+
+/// A month of parental leave, as the schedule describes it.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ParentalLeaveMonth {
+    /// Basiselterngeld or `ElterngeldPlus`.
+    pub variant: Variant,
+    /// Whether the Geschwisterbonus applies.
+    pub sibling_bonus: bool,
+    /// Further children of a multiple birth.
+    pub additional_children: u8,
+    /// Which month of the leave this is, counting from zero.
+    ///
+    /// Reported so the kernel can recognise the first month and fix the Bemessungsentgelt
+    /// there, as the BEEG does: the amount is set by the year before the birth and does not
+    /// move as the household's baseline salary grows underneath it.
+    pub month_of_leave: u32,
 }
 
 /// An ordered set of life events.
@@ -366,6 +434,7 @@ impl Schedule {
         let mut interrupted = false;
         let mut reduced = false;
         let mut fraction: Option<Rate> = None;
+        let mut parental_leave = None;
 
         for event in self.events() {
             if !event.active_in(month_index) {
@@ -382,12 +451,33 @@ impl Schedule {
                     other_income = other_income.add(monthly_amount)?;
                 }
                 Event::OneOff { amount, .. } => one_off = one_off.add(amount)?,
+                Event::ParentalLeave {
+                    from_month,
+                    working_fraction,
+                    variant,
+                    sibling_bonus,
+                    additional_children,
+                    ..
+                } => {
+                    parental_leave = Some(ParentalLeaveMonth {
+                        variant,
+                        sibling_bonus,
+                        additional_children,
+                        month_of_leave: month_index.saturating_sub(from_month),
+                    });
+                    // Parental leave sets the hours directly. A full break is
+                    // `working_fraction` of zero, which the branch below turns into an
+                    // interruption rather than a reduction — the two are reported
+                    // differently and a household asked for a leave, not for part-time.
+                    fraction = Some(working_fraction);
+                }
             }
         }
 
         // Leave overrides reduced hours: stopping work is not working less.
-        if interrupted {
+        if interrupted || matches!(fraction, Some(share) if share.is_zero()) {
             gross = Money::ZERO;
+            interrupted = true;
         } else if let Some(share) = fraction {
             gross = gross.mul_rate(share, Rounding::HalfUp)?;
             reduced = true;
@@ -400,6 +490,7 @@ impl Schedule {
             one_off,
             employment_interrupted: interrupted,
             working_time_reduced: reduced,
+            parental_leave,
         })
     }
 }
@@ -410,6 +501,9 @@ const fn window_end(event: &Event) -> Option<u32> {
         Event::WorkingTime { until_month, .. }
         | Event::UnpaidLeave { until_month, .. }
         | Event::OtherIncome { until_month, .. } => until_month,
+        Event::ParentalLeave {
+            from_month, months, ..
+        } => Some(from_month.saturating_add(months)),
         Event::PayChange { .. } | Event::ExpenseChange { .. } | Event::OneOff { .. } => None,
     }
 }

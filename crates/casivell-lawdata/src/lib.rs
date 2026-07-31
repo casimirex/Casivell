@@ -95,6 +95,8 @@ pub struct LawYear {
     pub retirement: RetirementParameters,
     /// Deductions between gross pay and taxable income, §§ 9a, 10, 32 Abs. 6, 66 EStG.
     pub deductions: DeductionParameters,
+    /// Elterngeld parameters, BEEG.
+    pub benefits: ElterngeldParameters,
 }
 
 impl LawYear {
@@ -130,6 +132,10 @@ impl LawYear {
             Ok(d) => d,
             Err(e) => return Err(e),
         };
+        let benefits = match ElterngeldParameters::for_year(year) {
+            Ok(b) => b,
+            Err(e) => return Err(e),
+        };
         Ok(Self {
             year,
             income_tax,
@@ -138,6 +144,7 @@ impl LawYear {
             church_tax,
             retirement,
             deductions,
+            benefits,
         })
     }
 

@@ -20,9 +20,9 @@
 
 use casivell_core::{Money, TaxYear};
 use casivell_lawdata::{
-    CareInsurance, ChurchTaxParameters, DataStatus, DeductionParameters, HealthInsurance,
-    PensionInsurance, Provenance, RetirementParameters, SocialParameters, SolidarityParameters,
-    UnemploymentInsurance,
+    CareInsurance, ChurchTaxParameters, DataStatus, DeductionParameters, ElterngeldParameters,
+    HealthInsurance, PensionInsurance, Provenance, RetirementParameters, SocialParameters,
+    SolidarityParameters, UnemploymentInsurance,
 };
 
 use crate::ProjectionError;
@@ -100,6 +100,9 @@ fn concat_basis(what: &'static str, note: &'static str) -> &'static str {
         }
         ("retirement, carried forward", _) => {
             "§§ 77, 235 SGB VI, assumed unchanged from 2026 (NOT enacted law)"
+        }
+        ("Elterngeld, carried forward", _) => {
+            "BEEG, amounts assumed unchanged from 2026 (NOT enacted law)"
         }
         ("deductions, projected", _) => {
             "§§ 9a, 10, 10c, 20 Abs. 9, 32 Abs. 6, 32d, 66 EStG; allowances projected from 2026 under stated price inflation, caps and rates assumed unchanged (NOT enacted law)"
@@ -318,6 +321,35 @@ pub(crate) fn project_deductions(
             assumptions,
         ),
     })
+}
+
+/// Carries the Elterngeld parameters forward with their status downgraded.
+///
+/// **Every BEEG amount is unindexed**, and that is not a modelling shortcut — it is the
+/// statute. The 1 800 € maximum and the 300 € minimum have stood since the benefit was
+/// introduced in 2007, and § 2 gives no adjustment rule of any kind. Carrying them forward
+/// is therefore the *accurate* projection, not the lazy one.
+///
+/// The consequence is worth stating plainly, because a reader will otherwise think the model
+/// has frozen something it should have grown: a projection shows Elterngeld losing real value
+/// every year, and by the end of a long horizon replacing a small fraction of what it replaced
+/// at the start. That erosion has already happened once — the cap has lost roughly a third of
+/// its purchasing power since 2007 — and the projection simply continues it.
+#[must_use]
+pub(crate) fn carry_forward_benefits(
+    base: &ElterngeldParameters,
+    year: TaxYear,
+) -> ElterngeldParameters {
+    ElterngeldParameters {
+        year,
+        provenance: Provenance::new(
+            concat_basis("Elterngeld, carried forward", ""),
+            base.provenance.source_url,
+            base.provenance.verified_on,
+            DataStatus::Projected,
+        ),
+        ..*base
+    }
 }
 
 /// Carries the church tax rates forward with their status downgraded.

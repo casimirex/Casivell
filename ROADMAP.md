@@ -405,6 +405,40 @@ near 2026 would have passed.
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
+### Phase 6+ — Elterngeld and the Progressionsvorbehalt ✅ *complete*
+
+- [x] **§ 32b EStG** in `casivell-income`. Tax-free benefits are added to the taxable income
+      solely to find a *rate*, which is then applied to the income that really is taxable.
+      Covers Arbeitslosengeld, Kurzarbeitergeld and Krankengeld as well as Elterngeld.
+- [x] **The BEEG** in a new `casivell-benefits` crate, which must sit above `casivell-payroll`
+      because § 2e computes Elterngeld's tax deduction with the Programmablaufplan. The
+      layering is the statute's, and it means the largest deduction in the formula runs
+      through the code checked against 516 official values.
+- [x] **`Event::ParentalLeave`** in the kernel, paying the benefit monthly and feeding it to
+      the annual assessment so the rate effect lands where it really lands.
+
+**The number this was built to produce.** A household on 4 000 € a month taking twelve months'
+leave from July receives 19 700 € of Elterngeld — and pays **2 523 €** of it back in extra tax
+the following summer. `the_progressionsvorbehalt_claws_back_part_of_the_benefit` isolates it by
+running the identical interruption twice, once as `ParentalLeave` and once as `UnpaidLeave`:
+withholding is identical to the cent in both, and the refund falls from 4 216 € to 1 693 €.
+
+**And the case that surprises people.** Every straightforward parental-leave scenario ends in a
+*refund*, because stopping work mid-year over-withholds. Part-time `ElterngeldPlus` does not:
+the household draws a full year of reduced salary *and* the benefit, so withholding is roughly
+right for the salary and § 32b then raises the rate on all of it. The result is a bill of about
+1 200 € a year for a household whose income went **down** — arriving the summer after, with
+nothing on any payslip in between to warn of it.
+
+**A related finding, from the control case.** § 39b under-withholds whenever income *rises*
+mid-year, so simply returning from part-time produces a demand of its own, with no § 32b
+involved. The control in that test had to become quantitative rather than a sign test.
+
+**Elterngeld is unindexed, and the projection says so.** The 1 800 € cap and the 300 € floor
+have stood since 2007 and § 2 gives no adjustment rule of any kind, so `carry_forward_benefits`
+holds them fixed — which is the *accurate* projection, not the lazy one. A long horizon shows
+the benefit steadily losing real value, and that erosion is the statute's, not the model's.
+
 ### Phase 3+ — The annual assessment inside the kernel ✅ *complete*
 
 The gap Phase 3 left open, and the precondition for several later items.
@@ -444,10 +478,15 @@ of two indexed statutory series meeting a household that stood still.
       **expense changes**, **one-off costs**, and **non-employment income**.
 - [x] Exposed through the CLI: `--part-time 3:8:60`, `--break 5:6`, `--raise 15:8000`,
       `--one-off 5:-60000`.
-- [ ] **Elterngeld.** Was blocked on the annual assessment being inside the kernel; that
-      landed in Phase 3+, so what remains is § 32b itself — Elterngeld is tax-free but raises
-      the rate on everything else, and adding the payment without the rate effect would
-      understate every family's tax. `Event::OtherIncome` takes a known net amount meanwhile.
+- [x] **Elterngeld**, with the Progressionsvorbehalt. `casivell-benefits` computes the BEEG
+      amount — the stylised net of §§ 2c–2f, the 65–100 % sliding rate, the 300 … 1 800 €
+      clamp, § 2a's bonuses, `ElterngeldPlus`, and the § 1 Abs. 8 income cliff — and
+      `Event::ParentalLeave` pays it monthly while carrying it into the annual assessment as
+      a § 32b benefit. Both halves, because either alone misleads.
+- [ ] **Kindererziehungszeiten** (§ 56 SGB VI): thirty-six months of pension credit after a
+      birth, worth about one Entgeltpunkt a year. Its absence makes the projection
+      **overstate** the pension cost of taking leave — the one place the model is currently
+      pessimistic rather than neutral, and the next thing to fix.
 - [ ] Kita costs, which are municipal rather than statutory and have no national table.
 - [ ] Buy versus rent: needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
       amortisation. The deposit and the payment can be modelled today with `--one-off` and an

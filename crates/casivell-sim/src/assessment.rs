@@ -132,6 +132,8 @@ pub(crate) struct YearTally {
     pub(crate) months: u32,
 
     gross: Money,
+    /// § 32b wage-replacement benefits received this calendar year.
+    benefits: Money,
     income_tax: Money,
     solidarity_surcharge: Money,
     church_tax: Money,
@@ -150,6 +152,7 @@ impl YearTally {
             year,
             months: 0,
             gross: Money::ZERO,
+            benefits: Money::ZERO,
             income_tax: Money::ZERO,
             solidarity_surcharge: Money::ZERO,
             church_tax: Money::ZERO,
@@ -164,10 +167,15 @@ impl YearTally {
         }
     }
 
-    /// Adds one month's payslip.
-    pub(crate) fn add_month(&mut self, pay: &casivell_payroll::NetPay) -> Result<(), MoneyError> {
+    /// Adds one month's payslip and any tax-free benefit received alongside it.
+    pub(crate) fn add_month(
+        &mut self,
+        pay: &casivell_payroll::NetPay,
+        benefit: Money,
+    ) -> Result<(), MoneyError> {
         self.months = self.months.saturating_add(1);
         self.gross = self.gross.add(pay.gross)?;
+        self.benefits = self.benefits.add(benefit)?;
         self.income_tax = self.income_tax.add(pay.income_tax)?;
         self.solidarity_surcharge = self.solidarity_surcharge.add(pay.solidarity_surcharge)?;
         self.church_tax = self.church_tax.add(pay.church_tax)?;
@@ -219,6 +227,8 @@ pub struct AnnualSettlement {
     pub assessment: Assessment,
     /// Withheld less owed: positive is a refund, negative a further demand.
     pub amount: Money,
+    /// The zu versteuerndes Einkommen assessed, which the BEEG income limit is measured on.
+    pub taxable_income: Money,
     /// The month index at which it reaches the household.
     pub month_index: u32,
 }
@@ -259,11 +269,10 @@ pub(crate) fn settle_year(
         // and it is small — a few euro of deduction on a difference of a few tens.
         church_tax_paid: tally.church_tax,
         other_special_expenses: Money::ZERO,
-        // § 32b benefits are not yet produced by the kernel: `Event::OtherIncome` takes a
-        // known net amount whose tax character is deliberately unspecified, so treating it
-        // as a wage-replacement benefit would assert something the caller did not say.
-        // Elterngeld will populate this.
-        wage_replacement_benefits: Money::ZERO,
+        // Elterngeld drawn during the year. Untaxed, but § 32b raises the rate on everything
+        // above — which is the whole reason the kernel carries it rather than treating it as
+        // ordinary non-employment income.
+        wage_replacement_benefits: tally.benefits,
         children: 0,
     };
 
@@ -282,6 +291,7 @@ pub(crate) fn settle_year(
         months_assessed: tally.months,
         assessment,
         amount: assessment.refund,
+        taxable_income: assessment.taxable_income,
         month_index: finished_at.saturating_add(SETTLEMENT_LAG_MONTHS),
     })
 }

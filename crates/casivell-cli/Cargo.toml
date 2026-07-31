@@ -12,6 +12,7 @@ name = "casivell"
 path = "src/main.rs"
 
 [dependencies]
+casivell-benefits = { path = "../casivell-benefits" }
 casivell-core = { path = "../casivell-core" }
 casivell-lawdata = { path = "../casivell-lawdata" }
 casivell-payroll = { path = "../casivell-payroll" }
