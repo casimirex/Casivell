@@ -70,9 +70,13 @@
     )
 )]
 
+pub mod factor;
 pub mod net;
 pub mod withholding;
 
+pub use factor::{
+    Arrangement, ClassComparison, compare_classes, factor_thousandths, faktorverfahren,
+};
 pub use net::{NetPay, monthly_net, net_pay};
 pub use withholding::{
     CareStatus, Employment, HealthCover, PayPeriod, PayrollLaw, Withholding, withhold,

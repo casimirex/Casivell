@@ -32,6 +32,7 @@
 )]
 
 mod args;
+mod classes_report;
 mod format;
 mod law_report;
 mod project_report;
@@ -40,7 +41,7 @@ mod report;
 use std::process::ExitCode;
 
 use casivell_core::TaxYear;
-use casivell_payroll::{Employment, HealthCover, PayrollLaw, net_pay};
+use casivell_payroll::{Employment, HealthCover, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
 use casivell_sim::{Household, SimulationConfig, simulate};
 use casivell_social::Insured;
@@ -91,12 +92,16 @@ PROJECT OPTIONS
       --inflation <p>     Annual price inflation (default 2,0)
       --wage-growth <p>   Annual wage growth (default 2,8)
 
+CLASSES OPTIONS
+      --partner <amount>  The second spouse's monthly gross (required)
+
 LAW OPTIONS
       --inflation <p>     Annual price inflation for projection (default 2,0)
       --wage-growth <p>   Annual wage growth for projection (default 2,8)
 
 EXAMPLES
   casivell --gross 4500 --class 1
+  casivell classes --gross 5000 --partner 1800 --class 4
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
   casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
@@ -122,6 +127,7 @@ fn main() -> ExitCode {
     }
 
     let outcome = match argv.first().map(String::as_str) {
+        Some("classes") => run_classes(argv.into_iter().skip(1).collect()),
         Some("law") => run_law(argv.into_iter().skip(1).collect()),
         Some("project") => run_project(argv.into_iter().skip(1).collect()),
         _ => run(argv),
@@ -138,6 +144,37 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Compares the tax-class arrangements available to a married couple.
+fn run_classes(argv: Vec<String>) -> Result<String, String> {
+    let request = args::parse_classes(argv).map_err(|e| e.to_string())?;
+    let base = request.base;
+
+    let year = TaxYear::new(base.year).map_err(|_| {
+        format!(
+            "{} is outside the representable range {}–{}.",
+            base.year,
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_REPRESENTABLE.get(),
+        )
+    })?;
+    let law = PayrollLaw::for_year(year)
+        .map_err(|_| format!("no enacted payroll parameters for {}.", base.year))?;
+    let employment = build_employment(&base).map_err(|e| e.to_string())?;
+
+    // Which salary is the higher one is the caller's to state only in the sense that III/V
+    // is priced with the higher earner in III; swapping them here rather than refusing keeps
+    // the report meaningful whichever order they were given in.
+    let (higher, lower) = if base.gross >= request.partner_gross {
+        (base.gross, request.partner_gross)
+    } else {
+        (request.partner_gross, base.gross)
+    };
+
+    let comparison = compare_classes(higher, lower, &employment, &employment, &law)
+        .map_err(|e| e.to_string())?;
+    classes_report::render(&comparison, higher, lower, base.year).map_err(|e| e.to_string())
 }
 
 /// Renders the statutory parameters for a year, projecting past the last enacted one.

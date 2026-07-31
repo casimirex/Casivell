@@ -219,6 +219,12 @@ pub struct Employment {
     pub annual_allowance: Money,
     /// `JLHINZU`: an annual add-back from the same record.
     pub annual_addition: Money,
+    /// `F`: the § 39f Faktor, for a couple who elected the Faktorverfahren.
+    ///
+    /// Meaningful only in class IV, and only ever below 1 — § 39f Abs. 1 Satz 6 applies the
+    /// procedure at all only when the factor comes out under one. Set with
+    /// [`Employment::with_factor`], which enforces both.
+    pub factor: Option<Rate>,
 }
 
 impl Employment {
@@ -255,7 +261,34 @@ impl Employment {
             church,
             annual_allowance: Money::ZERO,
             annual_addition: Money::ZERO,
+            factor: None,
         })
+    }
+
+    /// Elects the § 39f Faktorverfahren.
+    ///
+    /// A builder method rather than a parameter on [`Self::new`], because the factor is a
+    /// property of a *couple* and cannot be stated when one employment is first described —
+    /// it has to be computed from both salaries by
+    /// [`crate::factor::faktorverfahren`] first.
+    ///
+    /// # Errors
+    ///
+    /// [`MoneyError::OutOfDomain`] if the class is not IV, or if the factor is not strictly
+    /// between zero and one. § 39f Abs. 1 Satz 6 makes the procedure available only where the
+    /// factor comes out below one, so a factor of one or more is not a rounding edge but a
+    /// case where the election does not apply at all.
+    pub const fn with_factor(mut self, factor: Rate) -> Result<Self, MoneyError> {
+        if !matches!(self.tax_class, TaxClass::Class4) {
+            return Err(MoneyError::OutOfDomain { cents: 0 });
+        }
+        if factor.ppm() <= 0 || factor.ppm() >= Rate::ONE.ppm() {
+            return Err(MoneyError::OutOfDomain {
+                cents: factor.ppm(),
+            });
+        }
+        self.factor = Some(factor);
+        Ok(self)
     }
 }
 
@@ -383,15 +416,17 @@ pub fn withhold(
 
     // MLSTJAHR for the Lohnsteuer itself.
     let taxable = zre4.sub(table_allowances)?.sub(vsp)?;
-    let annual_income_tax = annual_tax(taxable, class, law)?;
+    let annual_income_tax = apply_factor(annual_tax(taxable, class, law)?, employment)?;
 
-    // MLSTJAHR again, with Kinderfreibeträge, for the § 51a base.
+    // MLSTJAHR again, with Kinderfreibeträge, for the § 51a base. The factor applies here
+    // too: § 39f Abs. 3 puts the Solidaritätszuschlag and the church tax on the factored
+    // amount, so a couple that elected the procedure is not surcharged on an unfactored base.
     let annual_church_tax_base = if child_allowance.is_zero() {
         annual_income_tax
     } else {
         let with_children = table_allowances.add(child_allowance)?;
         let taxable_51a = zre4.sub(with_children)?.sub(vsp)?;
-        annual_tax(taxable_51a, class, law)?
+        apply_factor(annual_tax(taxable_51a, class, law)?, employment)?
     };
 
     // MSOLZ.
@@ -415,6 +450,17 @@ pub fn withhold(
         vorsorgepauschale: vsp,
         table_allowances,
     })
+}
+
+/// Applies the § 39f Faktor to an annual tax figure.
+///
+/// `LSTJAHR` is a whole-euro quantity throughout the Programmablaufplan, so the product is
+/// truncated back to whole euro rather than left in cents.
+fn apply_factor(annual: Money, employment: &Employment) -> Result<Money, MoneyError> {
+    match employment.factor {
+        Some(factor) => annual.mul_rate(factor, Rounding::Floor)?.floor_to_euro(),
+        None => Ok(annual),
+    }
 }
 
 /// `MZTABFB`: the fixed table allowances, `ZTABFB`.

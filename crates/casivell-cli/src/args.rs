@@ -600,6 +600,42 @@ where
     })
 }
 
+/// A request to compare tax-class arrangements.
+pub(crate) struct ClassesRequest {
+    /// The household description, carrying the first salary.
+    pub(crate) base: Request,
+    /// The second spouse's monthly gross.
+    pub(crate) partner_gross: Money,
+}
+
+/// Parses the `classes` form.
+///
+/// # Errors
+///
+/// [`ArgError`] on an unusable argument, including a missing `--partner`.
+pub(crate) fn parse_classes(args: Vec<String>) -> Result<ClassesRequest, ArgError> {
+    let mut shared = Vec::with_capacity(args.len());
+    let mut partner_gross = None;
+
+    let mut iter = args.into_iter();
+    while let Some(flag) = iter.next() {
+        match flag.as_str() {
+            "--partner" => partner_gross = Some(parse_money(&flag, &mut iter)?),
+            other => {
+                shared.push(other.to_owned());
+                if takes_a_value(other) {
+                    shared.push(next_value(other, &mut iter)?);
+                }
+            }
+        }
+    }
+
+    Ok(ClassesRequest {
+        base: Request::parse(shared)?,
+        partner_gross: partner_gross.ok_or_else(|| ArgError::Required("--partner".to_owned()))?,
+    })
+}
+
 /// A windowed event specification, `FROM:UNTIL:VALUE` in years.
 struct PeriodSpec {
     from_month: u32,

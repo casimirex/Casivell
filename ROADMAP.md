@@ -232,7 +232,9 @@ tables rather than with a third-party calculator.
       marginal rate is 24,7 %, and stacking the capital income carries the average over 25 %,
       so the flat rate already wins.
 - [ ] Außergewöhnliche Belastungen (§§ 33–33b), which need a zumutbare Belastung.
-- [ ] Tax class comparison III/V versus IV+Faktor.
+- [x] **Tax class comparison III/V versus IV+Faktor**, with § 39f implemented in
+      `casivell-payroll`. The comparison's whole point is that the annual tax is *identical*
+      under all three: the class decides when it is paid and by which spouse.
 - [ ] The other five income categories of § 2 Abs. 1.
 
 **The verification problem, and what was done about it.**
@@ -404,6 +406,44 @@ near 2026 would have passed.
 - [ ] Inexactness and `Projected` status shown inline, never buried
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
+
+### Phase 2+ — § 39f and the tax-class question ✅ *complete*
+
+The most misunderstood thing in German payroll, and now the thing the tool says first.
+
+- [x] **§ 39f EStG**, the Faktorverfahren: `Y : X` truncated to three decimals, available only
+      where it comes out below one. `Employment::with_factor` refuses it outside class IV and
+      outside `(0, 1)`, because § 39f Abs. 1 Satz 6 makes a factor of one not an edge case but
+      a case where the election does not exist.
+- [x] **A three-way comparison** and a `casivell classes` CLI form.
+
+**The point the report leads with.** A married couple's income tax is fixed by § 32a Abs. 5
+and no combination of classes moves it by a cent. At 5 000 € and 1 800 € the annual tax is
+9 180 € under all three arrangements; what differs is that III/V takes 633 € a month and owes
+**1 587 €** at assessment, IV/IV takes 835 € and gets **838 €** back, and IV+Faktor lands
+within **4,08 €** of zero. That last figure is § 39f doing precisely what it was written to do.
+
+**Where the choice does matter, and it is not the tax.** Wage-replacement benefits are computed
+from *net pay*, so they follow the class: `casivell-benefits` already shows Elterngeld varying
+by about 386 € a month between class III and class V at 3 000 € gross, for the same household
+and the same total tax. Choosing a class before a birth is a real decision; choosing one to
+"pay less tax" is not.
+
+**A case that looks wrong until it does not.** For two equal earners III/V produces a *refund*,
+not a demand — class V withholds punitively from a "lower" earner who is not actually lower.
+And § 39f is unavailable to them, correctly: class IV already withholds them exactly right, so
+there is nothing for a factor to correct.
+
+**Verification.** There is no published Prüftabelle for the Faktorverfahren, so unlike the rest
+of this crate it cannot be checked against official values. It is checked instead against the
+property the statute exists to produce — that IV+Faktor withholding lands near the joint annual
+liability — using the independently implemented § 32a. Weaker than a reference table, stronger
+than nothing, and said plainly in the module documentation.
+
+**A bug the test found.** The first comparison put withheld tax *including* the
+Solidaritätszuschlag against a liability that was income tax alone, and blamed the 572 € Soli
+on the class choice. `Arrangement` now keeps `annual_income_tax` apart from
+`annual_withholding` so the settlement compares like with like.
 
 ### Phase 6+ — Elterngeld and the Progressionsvorbehalt ✅ *complete*
 
