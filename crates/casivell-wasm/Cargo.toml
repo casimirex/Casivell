@@ -1,37 +1,34 @@
-[workspace]
-resolver = "3"
-members = [
-    "crates/casivell-benefits",
-    "crates/casivell-cli",
-    "crates/casivell-core",
-    "crates/casivell-income",
-    "crates/casivell-lawdata",
-    "crates/casivell-payroll",
-    "crates/casivell-projection",
-    "crates/casivell-property",
-    "crates/casivell-sim",
-    "crates/casivell-social",
-    "crates/casivell-tax",
-    "crates/casivell-wasm",
-]
+[package]
+name = "casivell-wasm"
+version = "0.1.0"
+description = "A dependency-free C ABI over the Casivell engine, for the browser."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
 
-[workspace.package]
-edition = "2024"
-rust-version = "1.85"
-license = "Apache-2.0"
-repository = "https://github.com/srinivasan/casivell"
+[lib]
+crate-type = ["cdylib", "rlib"]
 
-# Lints are declared once here and inherited by every crate via
-# `[lints] workspace = true`. CI runs with `-D warnings`, so each of these is a
-# build failure, not a suggestion. See docs/CODING_STANDARD.md.
-[workspace.lints.rust]
-unsafe_code = "forbid"
+[dependencies]
+casivell-core = { path = "../casivell-core" }
+casivell-lawdata = { path = "../casivell-lawdata" }
+casivell-payroll = { path = "../casivell-payroll" }
+casivell-social = { path = "../casivell-social" }
+
+# This crate cannot inherit the workspace lints, because they `forbid(unsafe_code)` and a
+# `cdylib` export is spelled `#[unsafe(no_mangle)]` in Rust 2024. `forbid` cannot be relaxed
+# even by an `expect` at the site, so the rule is restated here as `deny` — which still fails
+# the build on an actual `unsafe` block, and leaves the export attributes as the single
+# documented exception. Every other workspace lint is repeated verbatim rather than dropped.
+[lints.rust]
+unsafe_code = "deny"
 missing_docs = "warn"
 missing_debug_implementations = "warn"
 unreachable_pub = "warn"
 elided_lifetimes_in_paths = "warn"
 
-[workspace.lints.clippy]
+[lints.clippy]
 pedantic = { level = "warn", priority = -1 }
 
 # R7: every fallible operation is handled explicitly. No silent unwinding.
@@ -68,16 +65,3 @@ many_single_char_names = "allow"
 # Renaming either half to satisfy the lint would make the code disagree with the
 # statute it transcribes.
 similar_names = "allow"
-
-[profile.release]
-opt-level = "s"
-lto = "fat"
-codegen-units = 1
-panic = "abort"
-strip = "symbols"
-
-# Tests need the release codegen path exercised too, but with debug assertions
-# live so that the R5 invariant checks actually fire.
-[profile.test]
-debug-assertions = true
-overflow-checks = true

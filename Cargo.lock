@@ -106,3 +106,13 @@ dependencies = [
  "casivell-core",
  "casivell-lawdata",
 ]
+
+[[package]]
+name = "casivell-wasm"
+version = "0.1.0"
+dependencies = [
+ "casivell-core",
+ "casivell-lawdata",
+ "casivell-payroll",
+ "casivell-social",
+]

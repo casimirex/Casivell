@@ -399,7 +399,41 @@ Arbeitnehmer-Pauschbetrag has in fact been raised repeatedly (1 000 → 1 200 �
 horizon from 0 to 44 steps, because the failure grew with distance and a single spot check
 near 2026 would have passed.
 
-### Phase 5 — UI · ~5 weeks
+### Phase 5 — UI · *the boundary exists, and one page uses it*
+
+- [x] **A C ABI over the engine**, in `casivell-wasm`. Hand-written rather than `wasm-bindgen`,
+      because this workspace has **no external dependencies at all** and that is worth more
+      than the convenience: every line that computes a German tax figure is in this repository
+      and reviewable, and the build has no supply chain.
+- [x] **A browser page that uses it** — `web/index.html`, two files, no framework and no
+      bundler. Built together with the ABI deliberately: an ABI with no consumer is structure
+      without a user, which is the same mistake the scenario DAG was declined for.
+- [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
+
+**The convention.** Two calls, because returning a struct across a C ABI needs pointers and
+therefore genuine `unsafe`: `casivell_payslip(...)` computes and stores, returning `0` or a
+negative error code, and `casivell_result(field)` reads each figure out in cents. The result
+lives in a `RefCell` in thread-local storage — safe, single-threaded, and the shape wasm has
+anyway. **A failed call clears the stored result**, so a caller that ignored the return code
+cannot read the previous calculation's figures and mistake them for its own.
+
+**One rule had to be relaxed, and only one.** Rust 2024 spells a `cdylib` export
+`#[unsafe(no_mangle)]`, and `forbid(unsafe_code)` cannot be relaxed even by an `expect` at the
+site. That crate therefore restates every workspace lint verbatim with `unsafe_code` at `deny`
+instead — which still fails the build on an actual `unsafe` block, and leaves the export
+attributes as the single documented exception. There is no `unsafe` block anywhere in it.
+
+**A bug the tests caught before a user could.** The year picker was first built from
+`TaxYear::FIRST_VERIFIED`, which is 2025 — but the Programmablaufplan has only ever been
+transcribed for 2026, so the page would have offered a year the engine refuses.
+`casivell_enacted_years` now *probes* the years that actually compute rather than asserting a
+range, so adding the 2025 PAP widens the picker by itself.
+
+**Verified end to end**, not assumed: the module was instantiated in Node and its figures
+compared against the CLI. Lohnsteuer 921,25, RV 511,50, ALV 71,50, KV 481,25, PV 132,00, netto
+3 382,50 — identical to the cent.
+
+### Phase 5 — the rest · ~5 weeks
 
 - [ ] Input flows for household, income, expenses (the CLI is the reference for what
       the inputs mean)

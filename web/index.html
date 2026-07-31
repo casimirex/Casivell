@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casivell — Brutto-Netto</title>
+<style>
+  :root { color-scheme: light dark; --line: color-mix(in srgb, currentColor 15%, transparent); }
+  body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 2rem 1rem; }
+  h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
+  .sub { opacity: .7; margin: 0 0 2rem; font-size: .9rem; }
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
+  label { display: grid; gap: .25rem; font-size: .85rem; }
+  input, select { font: inherit; padding: .4rem .5rem; border: 1px solid var(--line); border-radius: .3rem; background: transparent; color: inherit; }
+  .full { grid-column: 1 / -1; }
+  table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+  td { padding: .35rem 0; border-bottom: 1px solid var(--line); }
+  td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  tr.total td { font-weight: 600; border-bottom: 2px solid currentColor; }
+  tr.sub td { opacity: .65; font-size: .85rem; padding-left: 1.5rem; }
+  .error { color: #b00; margin-top: 1.5rem; }
+  footer { margin-top: 2.5rem; font-size: .8rem; opacity: .7; }
+  footer p { margin: .4rem 0; }
+</style>
+</head>
+<body>
+<h1>Casivell</h1>
+<p class="sub">Brutto zu Netto, gerechnet nach dem BMF-Programmablaufplan. Nichts verlässt dieses Gerät.</p>
+
+<form id="f">
+  <label class="full">Bruttolohn (€ / Monat)
+    <input type="number" id="gross" value="5500" min="0" step="1">
+  </label>
+  <label>Steuerklasse
+    <select id="class">
+      <option value="1" selected>I</option><option value="2">II</option>
+      <option value="3">III</option><option value="4">IV</option>
+      <option value="5">V</option><option value="6">VI</option>
+    </select>
+  </label>
+  <label>Bundesland <select id="land"></select></label>
+  <label>Jahr <select id="year"></select></label>
+  <label>Alter <input type="number" id="age" value="30" min="0" max="120"></label>
+  <label>Kinder <input type="number" id="children" value="0" min="0" max="20"></label>
+  <label>Zusatzbeitrag (%) <input type="number" id="kvz" value="2.9" min="0" max="10" step="0.1"></label>
+  <label>Kirchensteuer
+    <select id="church"><option value="0" selected>nein</option><option value="1">ja</option></select>
+  </label>
+</form>
+
+<div id="out"></div>
+
+<footer>
+  <p><strong>Keine Steuerberatung</strong> (§§ 1–4 StBerG). Vorläufige Werte; der
+     Jahresausgleich rechnet ab.</p>
+  <p id="basis"></p>
+  <p>Was dieser Rechner <em>nicht</em> kann, steht in <code>docs/LIMITATIONS.md</code>.</p>
+</footer>
+
+<script type="module">
+// The sixteen states, in `Bundesland::ALL` order — the index the ABI expects.
+const LAENDER = ["Baden-Württemberg","Bayern","Berlin","Brandenburg","Bremen","Hamburg",
+  "Hessen","Mecklenburg-Vorpommern","Niedersachsen","Nordrhein-Westfalen","Rheinland-Pfalz",
+  "Saarland","Sachsen","Sachsen-Anhalt","Schleswig-Holstein","Thüringen"];
+
+const FIELD = { GROSS:0, INCOME_TAX:1, SOLIDARITY:2, CHURCH_TAX:3, CONTRIBUTIONS:4,
+                NET:5, PENSION:6, HEALTH:7, CARE:8, UNEMPLOYMENT:9 };
+
+const ERRORS = {
+  "-1": "Für dieses Jahr liegen keine Daten vor.",
+  "-2": "Unbekannte Steuerklasse.",
+  "-3": "Unbekanntes Bundesland.",
+  "-4": "Eine Eingabe liegt außerhalb des zulässigen Bereichs. Kinder setzen die Elterneigenschaft voraus.",
+  "-5": "Die Rechnung hat den darstellbaren Bereich verlassen.",
+};
+
+// No bindings crate: the module is instantiated directly and its exports are plain numbers.
+const { instance } = await WebAssembly.instantiateStreaming(fetch("casivell_wasm.wasm"), {});
+const wasm = instance.exports;
+
+const euro = cents => (cents / 100).toLocaleString("de-DE",
+  { style: "currency", currency: "EUR" });
+
+// Populate the pickers from the engine rather than from a hard-coded list, so the page
+// cannot offer a year the calculation refuses.
+const packed = Number(wasm.casivell_enacted_years());
+const [first, last] = [Math.floor(packed / 10000), packed % 10000];
+const yearSelect = document.getElementById("year");
+for (let y = last; y >= first; y--) yearSelect.add(new Option(y, y));
+const landSelect = document.getElementById("land");
+LAENDER.forEach((name, i) => landSelect.add(new Option(name, i)));
+landSelect.value = "9";
+document.getElementById("basis").textContent =
+  `Rechtsstand ${first === last ? first : `${first}–${last}`}, gesetzlich in Kraft.`;
+
+const value = id => Number(document.getElementById(id).value);
+
+function render() {
+  const children = value("children");
+  // The two i64 parameters cross as BigInt; every i32 stays a plain Number.
+  const code = wasm.casivell_payslip(
+    BigInt(Math.round(value("gross") * 100)), 0, value("year"), value("class"),
+    value("land"), value("age"), children,
+    children > 0 ? 1 : 0,               // children imply Elterneigenschaft
+    value("church"), BigInt(Math.round(value("kvz") * 10000)));
+
+  const out = document.getElementById("out");
+  if (code !== 0) {
+    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    return;
+  }
+
+  const get = f => Number(wasm.casivell_result(f));
+  const row = (label, field, cls = "") =>
+    `<tr class="${cls}"><td>${label}</td><td>${euro(get(field))}</td></tr>`;
+
+  out.innerHTML = `<table>
+    ${row("Bruttolohn", FIELD.GROSS)}
+    ${row("Lohnsteuer", FIELD.INCOME_TAX)}
+    ${row("Solidaritätszuschlag", FIELD.SOLIDARITY)}
+    ${get(FIELD.CHURCH_TAX) ? row("Kirchensteuer", FIELD.CHURCH_TAX) : ""}
+    ${row("Sozialabgaben", FIELD.CONTRIBUTIONS)}
+    ${row("Rentenversicherung", FIELD.PENSION, "sub")}
+    ${row("Krankenversicherung", FIELD.HEALTH, "sub")}
+    ${row("Pflegeversicherung", FIELD.CARE, "sub")}
+    ${row("Arbeitslosenversicherung", FIELD.UNEMPLOYMENT, "sub")}
+    ${row("Nettolohn", FIELD.NET, "total")}
+  </table>`;
+}
+
+document.getElementById("f").addEventListener("input", render);
+render();
+</script>
+</body>
+</html>

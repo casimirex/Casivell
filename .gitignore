@@ -31,3 +31,6 @@ __pycache__/
 node_modules/
 dist/
 .vite/
+
+# The browser build artefact; see web/README.md to rebuild it.
+web/*.wasm
