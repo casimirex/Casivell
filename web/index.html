@@ -43,6 +43,15 @@
   .chain { display: grid; grid-template-columns: 1fr auto; gap: .1rem .75rem;
            font-variant-numeric: tabular-nums; margin: .5rem 0; }
   .chain .rule { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+  figure { margin: 1.5rem 0 0; }
+  svg.chart { width: 100%; height: auto; display: block; }
+  svg.chart .axis { stroke: currentColor; opacity: .3; stroke-width: 1; }
+  svg.chart .grid { stroke: currentColor; opacity: .12; stroke-width: 1; }
+  svg.chart .line { fill: none; stroke: currentColor; stroke-width: 2.5;
+                    stroke-linejoin: round; stroke-linecap: round; }
+  svg.chart .projected { stroke-dasharray: 6 4; opacity: .75; }
+  svg.chart text { fill: currentColor; font-size: 11px; opacity: .65; }
+  figcaption { font-size: .85rem; opacity: .75; margin-top: .5rem; }
   .error { color: #b00; margin-top: 1.5rem; }
   nav { display: flex; gap: .25rem; margin-bottom: 1.5rem; }
   /* 44px tall: WCAG 2.2's 24×24 minimum with room to spare. */
@@ -69,6 +78,7 @@
 <nav aria-label="Rechner">
   <button type="button" data-form="payslip" aria-pressed="true">Brutto-Netto</button>
   <button type="button" data-form="classes" aria-pressed="false">Steuerklassen</button>
+  <button type="button" data-form="project" aria-pressed="false">Projektion</button>
 </nav>
 
 <form id="f">
@@ -90,6 +100,14 @@
   <label>Alter <input type="number" id="age" value="30" min="0" max="120"></label>
   <label>Kinder <input type="number" id="children" value="0" min="0" max="20"></label>
   <label>Zusatzbeitrag (%) <input type="number" id="kvz" value="2.9" min="0" max="10" step="0.1"></label>
+  <label id="expensesRow" hidden>Ausgaben (€ / Monat)
+    <input type="number" id="expenses" value="2000" min="0" step="50"></label>
+  <label id="yearsRow" hidden>Jahre
+    <input type="number" id="years" value="40" min="1" max="70"></label>
+  <label id="returnRow" hidden>Rendite (%)
+    <input type="number" id="ret" value="4" min="0" max="20" step="0.5"></label>
+  <label id="payGrowthRow" hidden>Lohnwachstum (%)
+    <input type="number" id="paygrowth" value="2" min="0" max="20" step="0.5"></label>
   <label>Kirchensteuer
     <select id="church"><option value="0" selected>nein</option><option value="1">ja</option></select>
   </label>
@@ -339,16 +357,141 @@ function announce(text) {
 }
 
 // -------------------------------------------------------------------------
+// Projektion: a series, and a chart drawn by hand
+// -------------------------------------------------------------------------
+
+const PARAM = { GROSS:0, YEAR:1, TAX_CLASS:2, LAND:3, AGE:4, CHILDREN:5, IS_PARENT:6,
+                CHURCH:7, SUPPLEMENTARY_RATE:8, EXPENSES:9, YEARS:10,
+                INVESTMENT_RETURN:11, PAY_GROWTH:12, INFLATION:13, WAGE_GROWTH:14 };
+const ROW = { YEAR:0, GROSS:1, NET:2, SAVED:3, WEALTH:4, NET_WORTH:5,
+              PENSION_POINTS:6, ACCRUED_PENSION:7, IS_ENACTED:8 };
+
+function renderProject() {
+  const children = value("children");
+  wasm.casivell_project_reset();
+  const set = (p, v) => wasm.casivell_project_set(p, BigInt(Math.round(v)));
+  set(PARAM.GROSS, value("gross") * 100);
+  set(PARAM.YEAR, value("year"));
+  set(PARAM.TAX_CLASS, value("class"));
+  set(PARAM.LAND, value("land"));
+  set(PARAM.AGE, value("age"));
+  set(PARAM.CHILDREN, children);
+  set(PARAM.IS_PARENT, children > 0 ? 1 : 0);
+  set(PARAM.CHURCH, value("church"));
+  set(PARAM.SUPPLEMENTARY_RATE, value("kvz") * 10000);
+  set(PARAM.EXPENSES, value("expenses") * 100);
+  set(PARAM.YEARS, value("years"));
+  set(PARAM.INVESTMENT_RETURN, value("ret") * 10000);
+  set(PARAM.PAY_GROWTH, value("paygrowth") * 10000);
+
+  const out = document.getElementById("out");
+  const code = wasm.casivell_project_run();
+  if (code !== 0) {
+    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    return;
+  }
+
+  const n = wasm.casivell_project_years();
+  const at = (i, f) => Number(wasm.casivell_project_value(i, f));
+  const series = Array.from({ length: n }, (_, i) => ({
+    year: at(i, ROW.YEAR), wealth: at(i, ROW.WEALTH), net: at(i, ROW.NET),
+    saved: at(i, ROW.SAVED), pension: at(i, ROW.ACCRUED_PENSION),
+    enacted: at(i, ROW.IS_ENACTED) === 1,
+  }));
+
+  const last = series[n - 1];
+  const peak = series.reduce((best, r) => r.wealth > best.wealth ? r : best, series[0]);
+  const turns = peak.year !== last.year;
+
+  out.innerHTML = `${chart(series)}
+    <table>
+      <caption class="vh">Projektion: Vermögen und Rentenanwartschaft je Jahr</caption>
+      <tr><th scope="col">Jahr</th><th scope="col">Netto/mtl.</th><th scope="col">Sparrate</th>
+          <th scope="col">Vermögen</th><th scope="col">Rente/mtl.</th></tr>
+      ${series.filter((_, i) => i % 5 === 0 || i === n - 1).map(r => `<tr>
+        <th scope="row" style="font-weight:400">${r.year}${r.enacted ? "" : " *"}</th>
+        <td class="num">${euro(r.net)}</td>
+        <td class="num">${euro(r.saved)}</td>
+        <td class="num">${euro(r.wealth)}</td>
+        <td class="num">${euro(r.pension)}</td>
+      </tr>`).join("")}
+    </table>
+    <dl class="explain">
+      <dt>Was hier steht</dt>
+      <dd>Jede Zeile ist ein Jahresende. Mit <strong>*</strong> markierte Jahre beruhen auf
+      fortgeschriebenen Rechengrößen, nicht auf geltendem Recht — jenseits von
+      ${series.filter(r => r.enacted).at(-1)?.year ?? "?"} gibt es keine beschlossenen Werte.</dd>
+      ${turns ? `<dt>Das Vermögen kehrt um</dt>
+      <dd>Der höchste Stand liegt bei ${euro(peak.wealth)} im Jahr ${peak.year}, danach fällt
+      er. Wenn die Ausgaben mit den Preisen steigen und der Lohn nicht, überholen sie
+      irgendwann das Netto — hier ab dem Jahr ${peak.year}.</dd>` : ""}
+      <dt>Was nicht enthalten ist</dt>
+      <dd>Immobilien, Elterngeld, Kapitalerträge und Lebensereignisse rechnet nur die
+      Kommandozeile. Renditen sind Annahmen, keine Zusagen.</dd>
+    </dl>`;
+
+  announce(`Nach ${n} Jahren ${euro(last.wealth)} Vermögen und
+    ${euro(last.pension)} monatliche Rentenanwartschaft.`);
+}
+
+/// Draws the wealth series as an SVG path.
+///
+/// Hand-drawn rather than charted by a library, for the same reason the ABI is hand-written:
+/// no dependency earns its place here. The projected years are dashed, because a solid line
+/// through them would claim a certainty the figures do not have.
+///
+/// The chart is `role="img"` with a label, and the table below carries the same numbers — a
+/// picture nobody can read is not an answer.
+function chart(series) {
+  const W = 640, H = 220, PAD = { l: 8, r: 8, t: 12, b: 22 };
+  const max = Math.max(...series.map(r => r.wealth), 1);
+  const min = Math.min(...series.map(r => r.wealth), 0);
+  const span = (max - min) || 1;
+
+  const x = i => PAD.l + (i / Math.max(series.length - 1, 1)) * (W - PAD.l - PAD.r);
+  const y = v => H - PAD.b - ((v - min) / span) * (H - PAD.t - PAD.b);
+
+  // Two paths so the projected part can be dashed, overlapping by one point so they join.
+  const lastEnacted = series.reduce((n, r, i) => r.enacted ? i : n, 0);
+  const path = from => series.slice(from[0], from[1])
+    .map((r, k) => `${k ? "L" : "M"}${x(from[0] + k).toFixed(1)},${y(r.wealth).toFixed(1)}`)
+    .join(" ");
+
+  const zero = min < 0 ? `<line class="axis" x1="${PAD.l}" x2="${W - PAD.r}"
+                            y1="${y(0).toFixed(1)}" y2="${y(0).toFixed(1)}"/>` : "";
+
+  return `<figure>
+    <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
+         aria-label="Vermögensverlauf von ${series[0].year} bis ${series.at(-1).year}, Höchststand ${euro(max)}">
+      <line class="grid" x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(max).toFixed(1)}" y2="${y(max).toFixed(1)}"/>
+      ${zero}
+      <path class="line" d="${path([0, lastEnacted + 1])}"/>
+      <path class="line projected" d="${path([lastEnacted, series.length])}"/>
+      <text x="${PAD.l}" y="${H - 6}">${series[0].year}</text>
+      <text x="${W - PAD.r}" y="${H - 6}" text-anchor="end">${series.at(-1).year}</text>
+      <text x="${PAD.l}" y="${(y(max) - 4).toFixed(1)}">${euro(max)}</text>
+    </svg>
+    <figcaption>Geldvermögen, nominal. Gestrichelt: Jahre auf fortgeschriebenen
+      Rechengrößen.</figcaption>
+  </figure>`;
+}
+
+// -------------------------------------------------------------------------
 
 let currentForm = "payslip";
 
+const FORMS = { payslip: render, classes: renderClasses, project: renderProject };
+
 function show() {
-  const classes = currentForm === "classes";
-  document.getElementById("partnerRow").hidden = !classes;
+  const form = currentForm;
+  document.getElementById("partnerRow").hidden = form !== "classes";
   // The tax class is what the comparison varies, so offering it as an input would be
   // incoherent rather than merely redundant.
-  document.getElementById("classRow").hidden = classes;
-  (classes ? renderClasses : render)();
+  document.getElementById("classRow").hidden = form === "classes";
+  for (const id of ["expensesRow", "yearsRow", "returnRow", "payGrowthRow"]) {
+    document.getElementById(id).hidden = form !== "project";
+  }
+  FORMS[form]();
 }
 
 document.querySelectorAll("nav button").forEach(button => {

@@ -416,7 +416,23 @@ near 2026 would have passed.
       § 39f factor.
 - [x] **PWA, fully offline** — a service worker, a manifest and an icon. Six tests.
 - [x] **WCAG 2.2 AA**, audited and guarded.
-- [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
+- [x] **The projection form, with a chart.** Parameters are named and set one at a time rather
+      than passed as thirteen positional `i64`s, because a function with thirteen positional
+      arguments is one nobody calls correctly twice.
+- [ ] i18n scaffolding — the last item, and the only one left in Phase 5.
+
+**The chart is a hand-drawn SVG path**, no library, for the same reason the ABI is
+hand-written. Projected years are dashed: a solid line through them would claim a certainty
+the figures do not have, and since only the 2026 year-end rests on enacted law that is very
+nearly the whole line. `role="img"` with a label, and the same numbers in a table beneath —
+a picture nobody can read is not an answer.
+
+**A test caught the chart telling a flattering lie.** The first version asserted wealth only
+ever rises. It does not: with the defaults — no pay growth, expenses tracking inflation — it
+peaks around the twenty-eighth year and falls, because the household's spending overtakes its
+net pay. The engine was right and the assertion was wrong, and the case now has a test of its
+own. A projection that only ever curved upward would be flattering nonsense, and the page now
+says in words when the line turns and why.
 
 **The audit found a Level A failure.** The explainability panel was opened by a click handler
 on `<tr>` — no keyboard user could reach it at all. It is now a real `<button>` with

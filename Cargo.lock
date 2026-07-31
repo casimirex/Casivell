@@ -114,5 +114,7 @@ dependencies = [
  "casivell-core",
  "casivell-lawdata",
  "casivell-payroll",
+ "casivell-projection",
+ "casivell-sim",
  "casivell-social",
 ]

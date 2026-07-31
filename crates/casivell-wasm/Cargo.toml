@@ -14,6 +14,8 @@ crate-type = ["cdylib", "rlib"]
 casivell-core = { path = "../casivell-core" }
 casivell-lawdata = { path = "../casivell-lawdata" }
 casivell-payroll = { path = "../casivell-payroll" }
+casivell-projection = { path = "../casivell-projection" }
+casivell-sim = { path = "../casivell-sim" }
 casivell-social = { path = "../casivell-social" }
 
 # This crate cannot inherit the workspace lints, because they `forbid(unsafe_code)` and a

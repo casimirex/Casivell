@@ -104,7 +104,16 @@ over — it is the weakest link in this directory.
 
 ## What it computes
 
-Two forms. **Brutto-Netto**: gross to net for one employee. **Steuerklassen**: the three arrangements
+Three forms. **Brutto-Netto**: gross to net for one employee. **Steuerklassen**: the three arrangements
 open to a married couple, and the fact that the annual tax is identical under all of them.
-Everything else the engine does is reachable through the CLI. `docs/LIMITATIONS.md` is the authoritative account of what is and
+**Projektion**: the household forward over decades, with a chart.
+
+The chart is a hand-drawn SVG path — no library, for the same reason the ABI is hand-written.
+Projected years are **dashed**, because a solid line through them would claim a certainty the
+figures do not have, and with only 2026 enacted that is very nearly the whole line. It carries
+`role="img"` and a label, and the table beneath it holds the same numbers: a picture nobody can
+read is not an answer.
+
+Everything else the engine does — life events, property, Elterngeld, the annual assessment —
+is reachable through the CLI. `docs/LIMITATIONS.md` is the authoritative account of what is and
 is not modelled.

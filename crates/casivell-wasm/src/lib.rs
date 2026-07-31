@@ -48,6 +48,8 @@
     )
 )]
 
+pub mod projection;
+
 use core::cell::RefCell;
 
 use casivell_core::{Money, Rate, TaxYear};
@@ -515,7 +517,7 @@ fn employment_for(inputs: &Inputs) -> Result<(PayrollLaw, Employment), i32> {
 }
 
 /// The tax class an index names.
-fn tax_class(index: i32) -> Result<TaxClass, i32> {
+pub(crate) fn tax_class(index: i32) -> Result<TaxClass, i32> {
     match index {
         1 => Ok(TaxClass::Class1),
         2 => Ok(TaxClass::Class2),
