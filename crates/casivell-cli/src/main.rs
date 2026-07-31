@@ -94,6 +94,8 @@ PROJECT OPTIONS
       --child-born <year>           A birth; credits Kindererziehungszeit
       --parental-leave <spec>       FROM:MONTHS[:PERCENT], e.g. 2:14 or 2:14:50
       --parental-leave-plus <spec>  The same, drawing ElterngeldPlus
+      --buy <spec>        YEAR:PRICE:DEPOSIT:STATE[:EXPENSES], e.g. 3:400000:100000:NW:900
+      --property-growth <p>  Annual growth in the property's value (default 0,0)
       --years <n>         Horizon in years (default 40, max 70)
       --real              Show figures in today's purchasing power
       --pay-growth <p>    Annual growth in this household's pay (default 0,0)
@@ -138,6 +140,7 @@ EXAMPLES
   casivell project --gross 4500 --class 1 --expenses 2500 --part-time 3:8:60
   casivell project --gross 4500 --class 1 --expenses 2500 --break 5:6 --raise 15:8000
   casivell project --gross 4000 --class 1 --expenses 1800 --child-born 2 --parental-leave 2:14
+  casivell project --gross 6000 --class 1 --expenses 1500 --buy 3:400000:100000:NW:900
   casivell --gross 3200 --class 3 --state BY --children 2 --church
   casivell --gross 72000 --period year --class 1 --kvz 1,7
 
@@ -450,6 +453,7 @@ fn run_project(argv: Vec<String>) -> Result<String, String> {
         assumptions: request.assumptions,
         investment_return: request.investment_return,
         basis: request.basis,
+        property_growth: request.property_growth,
     };
 
     let mut sink = project_report::YearlySink::new();

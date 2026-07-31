@@ -86,6 +86,7 @@ dependencies = [
  "casivell-lawdata",
  "casivell-payroll",
  "casivell-projection",
+ "casivell-property",
  "casivell-social",
  "casivell-tax",
 ]

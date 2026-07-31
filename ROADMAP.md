@@ -409,7 +409,7 @@ near 2026 would have passed.
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
-### Phase 6+ — Buying a home · *half done, and the half matters*
+### Phase 6+ — Buying a home ✅ *complete*
 
 `casivell-property` prices the transaction and amortises the loan. It deliberately stops
 before answering "should I buy", and the boundary is the point of the design:
@@ -437,9 +437,26 @@ before answering "should I buy", and the boundary is the point of the design:
   figure has to be refinanced at whatever rates then are, and it is the number households most
   need and least often see.
 
-**Still to do:** an `Event::PropertyPurchase` in the kernel, swapping rent for the mortgage
-payment so the buy-versus-rent comparison runs through the same verified projection as
-everything else — with its assumptions printed beside it, as every other projection's are.
+**And the comparison, through the kernel.** `Event::PropertyPurchase` completes a purchase,
+rebases the household's expenses from rent to Hausgeld, and amortises the mortgage month by
+month alongside the same payroll and annual assessment as every other projection. The report
+gains a **Netto ges.** column — financial wealth plus the property, less the debt — because
+without it a buyer looks bankrupt in the month they complete.
+
+**The honest headline, and it is a negative one.** The verdict flips on the one number nobody
+knows. Same household, same salary, same house, same twenty-five years: at 1 % annual property
+growth renting wins, at 4 % buying does. Everything the engine computes exactly — the
+Grunderwerbsteuer, the amortisation, the payroll, the assessment — is *identical* in both runs.
+The renter's position does not move at all when the assumption changes, which is the control.
+
+That is why there is no verdict in the output. A tool that picked one growth rate and
+pronounced would be dressing a guess as a calculation, and this is the one place in Casivell
+where that temptation is strongest.
+
+**One thing the model shows that households routinely miss.** Immediately after completing,
+the buyer's net worth is about 40 000 € *below* the renter's — almost exactly the incidental
+costs, which bought no equity. Years of growth go into making that back before buying is even
+level.
 
 ### Phase 2+ — Außergewöhnliche Belastungen ✅ *complete*
 

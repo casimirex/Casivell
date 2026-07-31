@@ -29,6 +29,10 @@ pub(crate) struct YearRow {
     /// the ones beside it. Taken as the largest monthly amount seen in the year, which for a
     /// benefit the BEEG fixes at the start of a leave is simply the benefit.
     benefit: Money,
+    /// Financial wealth plus property equity, where the household owns any.
+    net_worth: Money,
+    /// Whether a property was owned at this row.
+    owns_property: bool,
     /// Every annual settlement received since the previous row.
     ///
     /// Accumulated rather than sampled: a settlement lands in July and a row is written in
@@ -103,6 +107,8 @@ impl Sink for YearlySink {
                 net: snapshot.net,
                 savings: snapshot.savings,
                 benefit: self.benefit,
+                net_worth: snapshot.net_worth,
+                owns_property: !snapshot.property_value.is_zero(),
                 settled: self.settled,
                 wealth: snapshot.wealth,
                 pension_points: snapshot.pension_points.micro(),
@@ -268,6 +274,18 @@ fn describe_moment(event: &Event, start_year: u16) -> Result<String, MoneyError>
             year(month),
             euro(amount)?
         ),
+        Event::PropertyPurchase {
+            month,
+            price,
+            land,
+            deposit,
+            ..
+        } => format!(
+            "{}: buys for {} € in {land:?}, {} € down",
+            year(month),
+            euro(price)?,
+            euro(deposit)?
+        ),
         Event::ChildBorn { month } => format!(
             "{}: a child is born; Kindererziehungszeit follows (§ 56 SGB VI)",
             year(month)
@@ -304,20 +322,8 @@ fn describe_leave(
 }
 
 fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
-    // The Elterngeld column earns its width only for a household that takes leave, so it is
-    // shown only then. A permanently empty column is noise in every other projection.
-    let show_benefit = sink.rows().any(|row| !row.benefit.is_zero());
-    let (heading, rule) = if show_benefit {
-        (
-            "  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo",
-            99,
-        )
-    } else {
-        (
-            "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth    Points   Pension/mo",
-            87,
-        )
-    };
+    let layout = Layout::for_rows(sink);
+    let (heading, rule) = layout.heading();
     let _ = writeln!(out, "{heading}");
     let _ = writeln!(out, "  {}", "─".repeat(rule));
 
@@ -332,37 +338,158 @@ fn write_table(out: &mut String, sink: &YearlySink) -> Result<(), MoneyError> {
             );
             law_ended = true;
         }
-        if show_benefit {
-            let _ = writeln!(
-                out,
-                "  {:>4}  {:>9}  {:>10}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
-                row.year,
-                euro(row.gross)?,
-                euro(row.net)?,
-                euro(row.benefit)?,
-                euro(row.savings)?,
-                euro(row.settled)?,
-                euro(row.wealth)?,
-                points(row.pension_points),
-                euro(row.accrued_pension)?,
-            );
-        } else {
-            let _ = writeln!(
-                out,
-                "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
-                row.year,
-                euro(row.gross)?,
-                euro(row.net)?,
-                euro(row.savings)?,
-                euro(row.settled)?,
-                euro(row.wealth)?,
-                points(row.pension_points),
-                euro(row.accrued_pension)?,
-            );
-        }
+        layout.write_row(out, row)?;
     }
     let _ = writeln!(out);
     Ok(())
+}
+
+/// Which columns the table carries.
+///
+/// A column earns its width only when it says something: Elterngeld is zero for every
+/// household that took no leave, and net worth equals wealth for every household that owns
+/// nothing. An empty column in every other projection is noise, so the table adapts.
+///
+/// The two extra columns are mutually exclusive rather than combinable. That is a width
+/// decision and not a principled one — a household that both takes leave and buys sees the
+/// net-worth column, because it is the one that changes the answer.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Layout {
+    /// Salary, savings and wealth.
+    Plain,
+    /// With the monthly Elterngeld.
+    Benefit,
+    /// With net worth beside financial wealth.
+    NetWorth,
+}
+
+impl Layout {
+    /// The layout these rows call for.
+    fn for_rows(sink: &YearlySink) -> Self {
+        if sink.rows().any(|row| row.owns_property) {
+            Self::NetWorth
+        } else if sink.rows().any(|row| !row.benefit.is_zero()) {
+            Self::Benefit
+        } else {
+            Self::Plain
+        }
+    }
+
+    /// The heading and the width of the rule under it.
+    const fn heading(self) -> (&'static str, usize) {
+        match self {
+            Self::NetWorth => (
+                "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth   Netto ges.    Points   Pension/mo",
+                101,
+            ),
+            Self::Benefit => (
+                "  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo",
+                99,
+            ),
+            Self::Plain => (
+                "  Year   Gross/mo      Net/mo   Saved/mo     Settle        Wealth    Points   Pension/mo",
+                87,
+            ),
+        }
+    }
+
+    /// Writes one row in this layout.
+    fn write_row(self, out: &mut String, row: &YearRow) -> Result<(), MoneyError> {
+        match self {
+            Self::NetWorth => write_net_worth_row(out, row),
+            Self::Benefit => write_benefit_row(out, row),
+            Self::Plain => write_plain_row(out, row),
+        }
+    }
+}
+
+/// One row with the Elterngeld column.
+fn write_benefit_row(out: &mut String, row: &YearRow) -> Result<(), MoneyError> {
+    let _ = writeln!(
+        out,
+        "  {:>4}  {:>9}  {:>10}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
+        row.year,
+        euro(row.gross)?,
+        euro(row.net)?,
+        euro(row.benefit)?,
+        euro(row.savings)?,
+        euro(row.settled)?,
+        euro(row.wealth)?,
+        points(row.pension_points),
+        euro(row.accrued_pension)?,
+    );
+    Ok(())
+}
+
+/// One row in the ordinary layout.
+fn write_plain_row(out: &mut String, row: &YearRow) -> Result<(), MoneyError> {
+    let _ = writeln!(
+        out,
+        "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>8}  {:>11}",
+        row.year,
+        euro(row.gross)?,
+        euro(row.net)?,
+        euro(row.savings)?,
+        euro(row.settled)?,
+        euro(row.wealth)?,
+        points(row.pension_points),
+        euro(row.accrued_pension)?,
+    );
+    Ok(())
+}
+
+/// One row of the table in its property form, which carries a net-worth column.
+fn write_net_worth_row(out: &mut String, row: &YearRow) -> Result<(), MoneyError> {
+    let _ = writeln!(
+        out,
+        "  {:>4}  {:>9}  {:>10}  {:>9}  {:>9}  {:>12}  {:>11}  {:>8}  {:>11}",
+        row.year,
+        euro(row.gross)?,
+        euro(row.net)?,
+        euro(row.savings)?,
+        euro(row.settled)?,
+        euro(row.wealth)?,
+        euro(row.net_worth)?,
+        points(row.pension_points),
+        euro(row.accrued_pension)?,
+    );
+    Ok(())
+}
+
+/// The caveats that apply only to a projection containing a property purchase.
+fn write_property_notes(out: &mut String, household: &Household) {
+    if !household
+        .schedule
+        .events()
+        .any(|event| matches!(event, Event::PropertyPurchase { .. }))
+    {
+        return;
+    }
+    let _ = writeln!(
+        out,
+        "  · Wealth is financial only; Netto ges. adds the property and subtracts the"
+    );
+    let _ = writeln!(
+        out,
+        "    mortgage. The deposit leaves in one month, so Wealth drops sharply there."
+    );
+    let _ = writeln!(
+        out,
+        "  · Grunderwerbsteuer is the state's own rate; notary and land registry"
+    );
+    let _ = writeln!(
+        out,
+        "    approximate the GNotKG schedule. Both are inside the loan, so they raise"
+    );
+    let _ = writeln!(out, "    the borrowing rather than leaving at completion.");
+    let _ = writeln!(
+        out,
+        "  · Whether buying beat renting turns on --property-growth, which nobody knows."
+    );
+    let _ = writeln!(
+        out,
+        "    Not modelled: the cost of selling, or refinancing when the fix expires."
+    );
 }
 
 /// The caveats that apply only to a projection containing parental leave.
@@ -440,9 +567,10 @@ fn write_notes(out: &mut String, household: &Household, config: &SimulationConfi
         }
     }
     write_leave_notes(out, household);
+    write_property_notes(out, household);
     let _ = writeln!(
         out,
-        "  · Not modelled: property, capital income, or income other than this employment."
+        "  · Not modelled: capital income, or income other than this employment."
     );
     let _ = writeln!(out, "\n  Not tax or investment advice.\n");
 }

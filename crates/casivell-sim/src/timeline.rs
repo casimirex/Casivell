@@ -8,13 +8,15 @@ use casivell_social::EntgeltPoints;
 
 use casivell_benefits::{ElterngeldRequest, elterngeld};
 use casivell_income::AssessmentLaw;
-use casivell_lawdata::ElterngeldParameters;
+use casivell_lawdata::{ElterngeldParameters, PropertyCostParameters};
+use casivell_property::{MortgageTerms, amortise, purchase_costs};
 
 use crate::assessment::{
     AnnualSettlement, YearTally, assessment_law, filing_status_for, settle_year,
 };
-use crate::events::MonthInputs;
+use crate::events::{Event, MonthInputs};
 use crate::household::{Household, SimulationConfig};
+use crate::property::OwnedProperty;
 
 /// Months in a year. Named so the constant never appears bare.
 pub const MONTHS_PER_YEAR: u32 = 12;
@@ -155,6 +157,29 @@ pub struct MonthSnapshot {
     pub parental_benefit: Money,
     /// A one-off cost or windfall applied to wealth this month. Negative is a cost.
     pub one_off: Money,
+    /// The interest part of this month's mortgage payment.
+    ///
+    /// Split out because for the first decade it is most of the payment, and a household
+    /// comparing buying with renting is really comparing interest with rent — the repayment
+    /// part is saving, not spending.
+    pub mortgage_interest: Money,
+    /// The mortgage payment made this month, zero once the loan has cleared.
+    ///
+    /// Reported apart from [`Self::expenses`] because it is the one outgoing that ends: a
+    /// household needs to see the month its housing cost falls by fifteen hundred euro.
+    pub mortgage_payment: Money,
+    /// The market value of any property owned.
+    pub property_value: Money,
+    /// What is still owed on it.
+    pub mortgage_balance: Money,
+    /// Financial wealth plus the property's equity.
+    ///
+    /// The figure that makes buying and renting comparable at all: a buyer's financial wealth
+    /// is lower and their net worth may not be. Reported alongside [`Self::wealth`] rather
+    /// than replacing it, because the two answer different questions — net worth says whether
+    /// the household is ahead, and financial wealth says whether it can pay for anything.
+    pub net_worth: Money,
+
     /// An annual assessment settling this month: positive is a refund, negative a demand.
     ///
     /// Zero in eleven months of twelve, and zero throughout for a household the kernel
@@ -248,6 +273,10 @@ pub struct Summary {
     pub settlements_applied: u32,
     /// Total Elterngeld received.
     pub total_parental_benefit: Money,
+    /// Net worth at the end: financial wealth plus any property equity.
+    pub final_net_worth: Money,
+    /// Total mortgage interest paid.
+    pub total_mortgage_interest: Money,
     /// Entgeltpunkte accrued by the end.
     pub final_pension_points: EntgeltPoints,
     /// The weakest status encountered, so a summary drawn from projected years says so.
@@ -280,6 +309,9 @@ impl Sink for Summary {
             add_saturating(self.total_contributions, snapshot.employee_contributions);
         self.total_parental_benefit =
             add_saturating(self.total_parental_benefit, snapshot.parental_benefit);
+        self.final_net_worth = snapshot.net_worth;
+        self.total_mortgage_interest =
+            add_saturating(self.total_mortgage_interest, snapshot.mortgage_interest);
         if !snapshot.tax_settlement.is_zero() {
             self.total_settlements =
                 add_saturating(self.total_settlements, snapshot.tax_settlement);
@@ -328,6 +360,8 @@ struct State {
     elterngeld: Option<Money>,
     /// The zu versteuerndes Einkommen of the last assessed year, for the BEEG income limit.
     last_assessed_income: Option<Money>,
+    /// A home the household owns, once it has bought one.
+    property: Option<OwnedProperty>,
     /// The one settlement that can be outstanding at a time.
     ///
     /// One slot suffices because [`crate::assessment::SETTLEMENT_LAG_MONTHS`] is under a
@@ -348,6 +382,7 @@ impl State {
             tally: YearTally::new(household.start_year.get()),
             elterngeld: None,
             last_assessed_income: None,
+            property: None,
             pending: None,
         }
     }
@@ -394,15 +429,7 @@ pub fn simulate<S: Sink>(
             close_year(&mut state, month_index, household, filing, cached.as_ref())?;
         }
 
-        // Statutory parameters change once a year, so they are resolved once a year. The
-        // hot loop must not be re-projecting a tariff twelve times.
-        if cached.as_ref().is_none_or(|held| held.year != year) {
-            cached = Some(resolve_year_law(year, &config.assumptions)?);
-        }
-        let Some(year_law) = cached.as_ref() else {
-            // Unreachable: the branch above always populates it.
-            return Err(SimulationError::Arithmetic(MoneyError::Overflow));
-        };
+        let year_law = law_for(&mut cached, year, config)?;
         let law = &year_law.payroll;
 
         let (pay, inputs, benefit) = advance_month(
@@ -417,16 +444,17 @@ pub fn simulate<S: Sink>(
         // A settlement assessed some months ago reaches the household now.
         let settlement = state.settlement_due(month_index);
 
-        accrue_pension(
-            &mut state,
-            &pay,
-            law,
-            household
-                .schedule
-                .child_raising_active(month_index, law.social.pension.child_raising_months),
+        // A purchase completes, then the mortgage runs — both before wealth advances, since
+        // the deposit leaves in the same month the property arrives.
+        let housing = advance_housing(&mut state, month_index, household, year, config)?;
+
+        let child_raising = household
+            .schedule
+            .child_raising_active(month_index, law.social.pension.child_raising_months);
+        accrue_pension(&mut state, &pay, law, child_raising)?;
+        let (investment_return, savings) = advance_wealth(
+            &mut state, &pay, &inputs, benefit, settlement, &housing, config,
         )?;
-        let (investment_return, savings) =
-            advance_wealth(&mut state, &pay, &inputs, benefit, settlement, config)?;
 
         let snapshot = build_snapshot(
             month_index,
@@ -440,6 +468,8 @@ pub fn simulate<S: Sink>(
                 savings,
                 settlement,
                 benefit,
+                mortgage_payment: housing.payment,
+                mortgage_interest: housing.interest,
             },
             law,
             config,
@@ -450,6 +480,124 @@ pub fn simulate<S: Sink>(
         }
     }
     Ok(())
+}
+
+/// The cached parameters for `year`, resolving them if the year has turned.
+///
+/// Statutory parameters change once a year, so they are resolved once a year: the hot loop
+/// must not be re-projecting a tariff twelve times.
+fn law_for<'a>(
+    cached: &'a mut Option<YearLaw>,
+    year: u16,
+    config: &SimulationConfig,
+) -> Result<&'a YearLaw, SimulationError> {
+    if cached.as_ref().is_none_or(|held| held.year != year) {
+        *cached = Some(resolve_year_law(year, &config.assumptions)?);
+    }
+    cached
+        .as_ref()
+        // Unreachable: the branch above always populates it.
+        .ok_or(SimulationError::Arithmetic(MoneyError::Overflow))
+}
+
+/// One month of housing: any completion, then the mortgage.
+struct Housing {
+    /// What left wealth at completion, zero in every other month.
+    deposit: Money,
+    /// The mortgage payment made.
+    payment: Money,
+    /// The interest part of it.
+    interest: Money,
+}
+
+/// Completes any purchase and advances any mortgage, in that order.
+fn advance_housing(
+    state: &mut State,
+    month_index: u32,
+    household: &Household,
+    year: u16,
+    config: &SimulationConfig,
+) -> Result<Housing, SimulationError> {
+    let deposit = complete_any_purchase(state, month_index, household, year)?;
+    let (payment, interest) = advance_property(state, config)?;
+    Ok(Housing {
+        deposit,
+        payment,
+        interest,
+    })
+}
+
+/// Completes a purchase falling in `month_index`, returning what leaves wealth.
+///
+/// The deposit is what leaves. The Kaufnebenkosten do not leave separately — they are inside
+/// the loan, which is the whole cost less the deposit. The two readings are the same
+/// arithmetic: `price + incidentals − deposit` is `price − (deposit − incidentals)`, so
+/// "the deposit pays the Nebenkosten first" and "the loan carries them" agree to the cent.
+///
+/// What it means is worth stating: 100 000 € down on a 400 000 € house leaves a 348 280 € loan
+/// against a 400 000 € property. The incidental costs bought no equity, so the borrowing is
+/// 87 % of the price rather than the 75 % a quarter down suggests.
+fn complete_any_purchase(
+    state: &mut State,
+    month_index: u32,
+    household: &Household,
+    year: u16,
+) -> Result<Money, SimulationError> {
+    let Some(Event::PropertyPurchase {
+        price,
+        land,
+        deposit,
+        agent_rate,
+        interest_rate,
+        repayment_rate,
+        ..
+    }) = household.schedule.purchase_at(month_index)
+    else {
+        return Ok(Money::ZERO);
+    };
+
+    let tax_year = TaxYear::new(year).map_err(SimulationError::Arithmetic)?;
+    // Property costs are not projected past the enacted years: a Land's transfer-tax rate is a
+    // political decision with no indexation rule, so a purchase beyond them uses the last
+    // enacted table rather than an invented one.
+    let law_year = tax_year.min(TaxYear::LAST_VERIFIED);
+    let costs_law =
+        PropertyCostParameters::for_year(law_year).map_err(SimulationError::Arithmetic)?;
+
+    let costs = purchase_costs(price, land, deposit, agent_rate, &costs_law)
+        .map_err(SimulationError::Arithmetic)?;
+    let loan = amortise(&MortgageTerms {
+        principal: costs.loan_required,
+        interest_rate,
+        initial_repayment_rate: repayment_rate,
+        // The kernel amortises month by month, so the schedule's own fixed period is only
+        // used for the figures it reports; ten is the conventional default.
+        fixed_years: 10,
+    })
+    .map_err(SimulationError::Arithmetic)?;
+
+    state.property = Some(OwnedProperty::just_bought(costs, loan));
+    Ok(costs.deposit)
+}
+
+/// Advances any owned property by one month, returning the mortgage payment made.
+fn advance_property(
+    state: &mut State,
+    config: &SimulationConfig,
+) -> Result<(Money, Money), SimulationError> {
+    let growth = monthly_rate(config.property_growth)?;
+    let Some(property) = state.property.as_mut() else {
+        return Ok((Money::ZERO, Money::ZERO));
+    };
+    let before = property.interest_paid;
+    let payment = property
+        .advance(growth)
+        .map_err(SimulationError::Arithmetic)?;
+    let interest = property
+        .interest_paid
+        .sub(before)
+        .map_err(SimulationError::Arithmetic)?;
+    Ok((payment, interest))
 }
 
 /// Applies growth, events and payroll for one month.
@@ -740,6 +888,7 @@ fn advance_wealth(
     inputs: &MonthInputs,
     benefit: Money,
     settlement: Money,
+    housing: &Housing,
     config: &SimulationConfig,
 ) -> Result<(Money, Money), SimulationError> {
     let monthly_return = monthly_rate(config.investment_return)?;
@@ -754,13 +903,17 @@ fn advance_wealth(
         .add(inputs.other_income)
         .and_then(|available| available.add(benefit))
         .and_then(|available| available.sub(inputs.expenses))
+        .and_then(|available| available.sub(housing.payment))
         .map_err(SimulationError::Arithmetic)?;
+    // The deposit leaves here rather than at completion, so every movement of wealth in a
+    // month happens in one place and the snapshot's reconciliation has a single source.
     state.wealth = state
         .wealth
         .add(investment_return)
         .and_then(|w| w.add(savings))
         .and_then(|w| w.add(inputs.one_off))
         .and_then(|w| w.add(settlement))
+        .and_then(|w| w.sub(housing.deposit))
         .map_err(SimulationError::Arithmetic)?;
     Ok((investment_return, savings))
 }
@@ -772,6 +925,8 @@ struct Flows {
     savings: Money,
     settlement: Money,
     benefit: Money,
+    mortgage_payment: Money,
+    mortgage_interest: Money,
 }
 
 /// Assembles a snapshot, applying the requested basis.
@@ -800,6 +955,18 @@ fn build_snapshot(
         casivell_social::monthly_pension(state.pension_points, Rate::ONE, Rate::ONE, pension_value)
             .map_err(SimulationError::Arithmetic)?;
 
+    // A property's value and its debt both belong to the household's position rather than to
+    // the month's flows, so they are read from the state rather than passed in.
+    let (property_value, mortgage_balance) = match state.property {
+        Some(property) => (property.value, property.balance),
+        None => (Money::ZERO, Money::ZERO),
+    };
+    let net_worth = state
+        .wealth
+        .add(property_value)
+        .and_then(|w| w.sub(mortgage_balance))
+        .map_err(SimulationError::Arithmetic)?;
+
     let elapsed_years = month_index
         .checked_div(MONTHS_PER_YEAR)
         .ok_or(MoneyError::Overflow)?;
@@ -819,6 +986,11 @@ fn build_snapshot(
         net: deflate(pay.net)?,
         other_income: deflate(inputs.other_income)?,
         parental_benefit: deflate(flows.benefit)?,
+        mortgage_payment: deflate(flows.mortgage_payment)?,
+        mortgage_interest: deflate(flows.mortgage_interest)?,
+        property_value: deflate(property_value)?,
+        mortgage_balance: deflate(mortgage_balance)?,
+        net_worth: deflate(net_worth)?,
         one_off: deflate(inputs.one_off)?,
         tax_settlement: deflate(flows.settlement)?,
         expenses: deflate(inputs.expenses)?,

@@ -69,6 +69,12 @@ pub struct Amortisation {
     pub balance_at_fix_end: Money,
     /// Interest paid during the fixed period.
     pub interest_during_fix: Money,
+    /// The rate the schedule was built from.
+    ///
+    /// Carried on the result so a caller re-running the amortisation month by month — the
+    /// simulation kernel does — charges the same rate the schedule assumed, rather than being
+    /// handed the terms separately and able to disagree with them.
+    pub interest_rate: Rate,
 }
 
 /// The monthly payment for a set of terms.
@@ -103,6 +109,7 @@ pub fn amortise(terms: &MortgageTerms) -> Result<Amortisation, MoneyError> {
             total_interest: Money::ZERO,
             balance_at_fix_end: Money::ZERO,
             interest_during_fix: Money::ZERO,
+            interest_rate: terms.interest_rate,
         });
     }
 
@@ -146,6 +153,7 @@ pub fn amortise(terms: &MortgageTerms) -> Result<Amortisation, MoneyError> {
         total_interest,
         balance_at_fix_end,
         interest_during_fix,
+        interest_rate: terms.interest_rate,
     })
 }
 

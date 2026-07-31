@@ -101,6 +101,12 @@ pub struct SimulationConfig {
     pub investment_return: Rate,
     /// Whether output is nominal or deflated to the starting year.
     pub basis: Basis,
+    /// Annual nominal growth in the value of owned property.
+    ///
+    /// Separate from [`Self::investment_return`] because a house is not a portfolio: it is one
+    /// undiversified asset in one town, and its return is the assumption a buy-versus-rent
+    /// answer is most sensitive to. Held apart so a household can see what changing it does.
+    pub property_growth: Rate,
 }
 
 impl SimulationConfig {
@@ -115,6 +121,7 @@ impl SimulationConfig {
             assumptions: Assumptions::default(),
             investment_return: Rate::ZERO,
             basis,
+            property_growth: Rate::ZERO,
         }
     }
 }

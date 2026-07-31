@@ -43,6 +43,7 @@
 
 use casivell_benefits::Variant;
 use casivell_core::{Money, MoneyError, Rate, Rounding};
+use casivell_lawdata::Bundesland;
 
 /// A change to the household from some month onward.
 ///
@@ -115,6 +116,46 @@ pub enum Event {
         month: u32,
         /// The amount. Negative is a cost.
         amount: Money,
+    },
+
+    /// A home is bought: the deposit and costs leave wealth, and a mortgage begins.
+    ///
+    /// # What the kernel does with this, and what it needs from the caller
+    ///
+    /// At `month` the deposit and the Kaufnebenkosten come out of wealth in one go, the loan
+    /// is amortised from the balance that leaves, and the household's expenses are rebased to
+    /// `monthly_expenses_after`. The mortgage payment is then tracked separately, so a report
+    /// can show it beside the expenses rather than buried in them, and it stops when the loan
+    /// clears rather than running forever.
+    ///
+    /// `monthly_expenses_after` is the household's whole monthly outgoing **excluding the
+    /// mortgage**: everything they spent before, less the rent they no longer pay, plus
+    /// Hausgeld and a maintenance provision. One figure rather than three, because the
+    /// household knows its own budget and the kernel would only be guessing at the split.
+    ///
+    /// # What this cannot tell you
+    ///
+    /// Whether buying was right. That turns on how the property's value moves, which is
+    /// [`crate::SimulationConfig::property_growth`] — an assumption, and the one the answer is
+    /// most sensitive to. The kernel reports the household's net worth with the property in it
+    /// and lets the assumption be varied; it does not pretend to know.
+    PropertyPurchase {
+        /// The month of completion.
+        month: u32,
+        /// The agreed price.
+        price: Money,
+        /// Where it is, which decides the Grunderwerbsteuer.
+        land: Bundesland,
+        /// The buyer's own money, put in at completion.
+        deposit: Money,
+        /// The buyer's share of any Maklerprovision.
+        agent_rate: Rate,
+        /// The Sollzins.
+        interest_rate: Rate,
+        /// The anfängliche Tilgung.
+        repayment_rate: Rate,
+        /// The household's monthly outgoing afterwards, excluding the mortgage.
+        monthly_expenses_after: Money,
     },
 
     /// A child is born.
@@ -215,7 +256,9 @@ impl Event {
             | Self::ExpenseChange { from_month, .. }
             | Self::ParentalLeave { from_month, .. }
             | Self::OtherIncome { from_month, .. } => from_month,
-            Self::OneOff { month, .. } | Self::ChildBorn { month, .. } => month,
+            Self::OneOff { month, .. }
+            | Self::ChildBorn { month, .. }
+            | Self::PropertyPurchase { month, .. } => month,
         }
     }
 
@@ -227,6 +270,8 @@ impl Event {
             return false;
         }
         match *self {
+            // A purchase takes effect once and then persists through the state it created.
+            Self::PropertyPurchase { month, .. } => month_index >= month,
             // Both are instants. A birth's Kindererziehungszeit is a separate question that
             // `Schedule::child_raising_active` answers, because § 56 Abs. 5 lets one child's
             // period push another's later and no single event can know that alone.
@@ -439,6 +484,20 @@ impl Schedule {
         false
     }
 
+    /// The purchase completing exactly in `month_index`, if any.
+    ///
+    /// Separate from [`Self::rebase_at`] because a purchase does two unrelated things: it
+    /// rebases expenses, which the schedule can report, and it creates a mortgage, which is
+    /// state only the kernel can carry.
+    #[must_use]
+    pub fn purchase_at(&self, month_index: u32) -> Option<Event> {
+        self.events()
+            .find(|event| {
+                matches!(event, Event::PropertyPurchase { month, .. } if *month == month_index)
+            })
+            .copied()
+    }
+
     /// The permanent changes taking effect exactly in `month_index`.
     ///
     /// The kernel adopts these as the new baseline before applying its own growth, so a
@@ -457,6 +516,14 @@ impl Schedule {
                     from_month,
                     monthly_expenses,
                 } if from_month == month_index => rebase.expenses = Some(monthly_expenses),
+                // A purchase rebases expenses too: the rent stops and Hausgeld starts, and
+                // the household's own expense growth should compound from the new figure
+                // rather than from the rent it no longer pays.
+                Event::PropertyPurchase {
+                    month,
+                    monthly_expenses_after,
+                    ..
+                } if month == month_index => rebase.expenses = Some(monthly_expenses_after),
                 _ => {}
             }
         }
@@ -503,8 +570,13 @@ impl Schedule {
                 // Permanent changes are already in the baseline (see `rebase_at`), and a
                 // birth changes no monthly input at all — it credits pension entitlement,
                 // which `Schedule::child_raising_active` reports separately.
-                Event::PayChange { .. } | Event::ExpenseChange { .. } | Event::ChildBorn { .. } => {
-                }
+                // Permanent changes are already in the baseline (see `rebase_at`), a birth
+                // credits pension entitlement, and a purchase creates state the kernel
+                // carries — none of them is a per-month input the schedule can resolve.
+                Event::PayChange { .. }
+                | Event::ExpenseChange { .. }
+                | Event::ChildBorn { .. }
+                | Event::PropertyPurchase { .. } => {}
                 Event::WorkingTime {
                     fraction: share, ..
                 } => fraction = Some(share),
@@ -569,7 +641,8 @@ const fn window_end(event: &Event) -> Option<u32> {
         Event::PayChange { .. }
         | Event::ExpenseChange { .. }
         | Event::OneOff { .. }
-        | Event::ChildBorn { .. } => None,
+        | Event::ChildBorn { .. }
+        | Event::PropertyPurchase { .. } => None,
     }
 }
 

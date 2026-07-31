@@ -395,6 +395,8 @@ pub(crate) struct ProjectRequest {
     pub(crate) assumptions: Assumptions,
     /// Annual nominal investment return on accumulated wealth.
     pub(crate) investment_return: Rate,
+    /// Annual nominal growth in the value of owned property.
+    pub(crate) property_growth: Rate,
     /// Monthly expenses.
     pub(crate) monthly_expenses: Money,
     /// Annual growth in the household's own pay.
@@ -420,6 +422,7 @@ where
     let mut inflation = Assumptions::DEFAULT_PRICE_INFLATION_PERCENT_MILLIS;
     let mut wages = Assumptions::DEFAULT_WAGE_GROWTH_PERCENT_MILLIS;
     let mut investment = 0_i64;
+    let mut property_growth = 0_i64;
     let mut expenses: Option<Money> = None;
     let mut pay_growth = 0_i64;
     let mut schedule = Schedule::new();
@@ -432,6 +435,7 @@ where
             "--inflation" => inflation = parse_percent_millis(&flag, &mut iter)?,
             "--wage-growth" => wages = parse_percent_millis(&flag, &mut iter)?,
             "--return" => investment = parse_percent_millis(&flag, &mut iter)?,
+            "--property-growth" => property_growth = parse_percent_millis(&flag, &mut iter)?,
             "--pay-growth" => pay_growth = parse_percent_millis(&flag, &mut iter)?,
             "--expenses" => expenses = Some(parse_money(&flag, &mut iter)?),
             "--part-time"
@@ -440,7 +444,8 @@ where
             | "--one-off"
             | "--parental-leave"
             | "--parental-leave-plus"
-            | "--child-born" => {
+            | "--child-born"
+            | "--buy" => {
                 parse_event_flag(&flag, &mut iter, &mut schedule)?;
             }
             other => {
@@ -468,6 +473,8 @@ where
             .map_err(|_| bad("--inflation/--wage-growth", "an annual rate within ±20 %"))?,
         investment_return: Rate::from_percent_millis(investment)
             .map_err(|_| bad("--return", "an annual rate within ±1000 %"))?,
+        property_growth: Rate::from_percent_millis(property_growth)
+            .map_err(|_| bad("--property-growth", "an annual rate within ±1000 %"))?,
         monthly_expenses: expenses.ok_or_else(|| ArgError::Required("--expenses".to_owned()))?,
         pay_growth: Rate::from_percent_millis(pay_growth)
             .map_err(|_| bad("--pay-growth", "an annual rate within ±1000 %"))?,
@@ -512,33 +519,9 @@ where
                 monthly_gross,
             }
         }
-        "--child-born" => {
-            let raw = next_value(flag, iter)?;
-            let month = years_to_months(&raw).ok_or_else(|| ArgError::BadValue {
-                flag: flag.to_owned(),
-                value: raw.clone(),
-                expected: "a year offset into the projection, e.g. 2".to_owned(),
-            })?;
-            Event::ChildBorn { month }
-        }
-        "--parental-leave" | "--parental-leave-plus" => {
-            // `FROM:MONTHS[:PERCENT]` — months rather than years, because parental leave is
-            // counted in Lebensmonate and a household says "fourteen months", never "1.17
-            // years". The optional percent is part-time work during the leave.
-            let spec = parse_leave_spec(flag, iter)?;
-            Event::ParentalLeave {
-                from_month: spec.from_month,
-                months: spec.months,
-                working_fraction: spec.working_fraction,
-                variant: if flag == "--parental-leave-plus" {
-                    Variant::Plus
-                } else {
-                    Variant::Basis
-                },
-                sibling_bonus: false,
-                additional_children: 0,
-            }
-        }
+        "--buy" => purchase_event(flag, iter)?,
+        "--child-born" => birth_event(flag, iter)?,
+        "--parental-leave" | "--parental-leave-plus" => leave_event(flag, iter)?,
         _ => {
             let (month, amount) = parse_month_amount(flag, iter)?;
             Event::OneOff { month, amount }
@@ -548,12 +531,128 @@ where
     Ok(())
 }
 
+/// The error a schedule refuses an event with.
+///
+/// The two ways it can refuse are the bound on the event count and a window that ends before
+/// it starts, and neither is worth distinguishing to a user who has mistyped one flag.
 fn schedule_error(flag: &str) -> ArgError {
     ArgError::BadValue {
         flag: flag.to_owned(),
         value: "too many events, or a window ending before it starts".to_owned(),
         expected: "at most 32 events, each ending after it starts".to_owned(),
     }
+}
+
+/// Builds a parental-leave event from its flag.
+///
+/// `FROM:MONTHS[:PERCENT]` — months rather than years, because parental leave is counted in
+/// Lebensmonate and a household says "fourteen months", never "1.17 years". The optional
+/// percent is part-time work during the leave.
+fn leave_event<I>(flag: &str, iter: &mut I) -> Result<Event, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let spec = parse_leave_spec(flag, iter)?;
+    Ok(Event::ParentalLeave {
+        from_month: spec.from_month,
+        months: spec.months,
+        working_fraction: spec.working_fraction,
+        variant: if flag == "--parental-leave-plus" {
+            Variant::Plus
+        } else {
+            Variant::Basis
+        },
+        sibling_bonus: false,
+        additional_children: 0,
+    })
+}
+
+/// Builds a birth event from its flag.
+fn birth_event<I>(flag: &str, iter: &mut I) -> Result<Event, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let month = years_to_months(&raw).ok_or_else(|| ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "a year offset into the projection, e.g. 2".to_owned(),
+    })?;
+    Ok(Event::ChildBorn { month })
+}
+
+/// Builds a purchase event from its flag.
+///
+/// The mortgage terms are not on the flag: a projection's point is the household's position
+/// over decades, and `casivell property` is the form for pricing a particular offer. The
+/// defaults are the conventional 3,5 % and 2 %.
+fn purchase_event<I>(flag: &str, iter: &mut I) -> Result<Event, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let spec = parse_purchase(flag, iter)?;
+    Ok(Event::PropertyPurchase {
+        month: spec.month,
+        price: spec.price,
+        land: spec.land,
+        deposit: spec.deposit,
+        agent_rate: Rate::ZERO,
+        interest_rate: Rate::from_percent_millis(3_500).unwrap_or(Rate::ZERO),
+        repayment_rate: Rate::from_percent_millis(2_000).unwrap_or(Rate::ZERO),
+        monthly_expenses_after: spec.monthly_expenses_after,
+    })
+}
+
+/// A property purchase specification.
+struct PurchaseSpec {
+    month: u32,
+    price: Money,
+    deposit: Money,
+    land: Bundesland,
+    monthly_expenses_after: Money,
+}
+
+/// Parses `YEAR:PRICE:DEPOSIT:STATE[:EXPENSES]`.
+///
+/// `EXPENSES` is the household's monthly outgoing afterwards excluding the mortgage; omitted,
+/// it keeps whatever `--expenses` said, which is almost never right once the rent has stopped
+/// and is therefore documented in the report rather than silently assumed to be.
+fn parse_purchase<I>(flag: &str, iter: &mut I) -> Result<PurchaseSpec, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: "YEAR:PRICE:DEPOSIT:STATE[:EXPENSES], e.g. 3:400000:100000:NW:900".to_owned(),
+    };
+    // Destructured rather than indexed, so the arity check and the field assignment are the
+    // same statement and cannot disagree.
+    let parts: Vec<&str> = raw.split(':').collect();
+    let (year, price, deposit, state, expenses) = match parts.as_slice() {
+        [year, price, deposit, state] => (*year, *price, *deposit, *state, None),
+        [year, price, deposit, state, expenses] => {
+            (*year, *price, *deposit, *state, Some(*expenses))
+        }
+        _ => return Err(bad()),
+    };
+
+    let money = |text: &str| -> Result<Money, ArgError> {
+        let euros: i64 = text.parse().map_err(|_| bad())?;
+        Money::from_euro(euros).map_err(|_| bad())
+    };
+
+    Ok(PurchaseSpec {
+        month: years_to_months(year).ok_or_else(bad)?,
+        price: money(price)?,
+        deposit: money(deposit)?,
+        land: land_from_code(&state.to_uppercase()).ok_or_else(bad)?,
+        monthly_expenses_after: match expenses {
+            Some(text) => money(text)?,
+            None => Money::ZERO,
+        },
+    })
 }
 
 /// A parental leave specification.
