@@ -35,6 +35,22 @@ Money parameters and results are `i64`, which JavaScript presents as `BigInt`: p
 `BigInt(cents)` in, and wrap results in `Number()`. See `crates/casivell-wasm/src/lib.rs` for
 why that friction is preferred to a silent ceiling.
 
+## Explainability
+
+Every figure in the table is clickable, and names the provision that produced it. The
+Lohnsteuer line opens the § 39b working in the Programmablaufplan's own variable names —
+`ZRE4 − ZTABFB − VSP = ZVE`, then the annual tax and the division by twelve — which is the same
+chain `casivell --gross ...` prints, from the same numbers.
+
+**No figure in that panel is recomputed in JavaScript.** Every one comes from the engine
+through `casivell_result`, because a second implementation would be a second thing to be wrong.
+The citations are structural — a paragraph number, never an amount — so they do not go stale
+when a rate changes.
+
+The footer shows the **Datenstand**: the fingerprint of the statutory data the figures rest on,
+the same digest `casivell law` prints. Two people quoting the same one are looking at the same
+law rather than assuming they are.
+
 ## What it computes
 
 The payslip form only — gross to net for one employee. Everything else the engine does is

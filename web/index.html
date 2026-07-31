@@ -18,6 +18,17 @@
   td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   tr.total td { font-weight: 600; border-bottom: 2px solid currentColor; }
   tr.sub td { opacity: .65; font-size: .85rem; padding-left: 1.5rem; }
+  tr.why { cursor: pointer; }
+  tr.why td:first-child::after { content: " ?"; opacity: .45; font-size: .8em; }
+  tr.why:hover td:first-child { text-decoration: underline dotted; }
+  .explain { margin: 0; padding: .75rem 1rem; background: color-mix(in srgb, currentColor 6%, transparent);
+             border-left: 3px solid currentColor; font-size: .85rem; }
+  .explain dt { font-weight: 600; margin-top: .5rem; }
+  .explain dd { margin: 0 0 0 0; }
+  .explain code { font-size: .95em; opacity: .75; }
+  .chain { display: grid; grid-template-columns: 1fr auto; gap: .1rem .75rem;
+           font-variant-numeric: tabular-nums; margin: .5rem 0; }
+  .chain .rule { grid-column: 1 / -1; border-top: 1px solid var(--line); }
   .error { color: #b00; margin-top: 1.5rem; }
   footer { margin-top: 2.5rem; font-size: .8rem; opacity: .7; }
   footer p { margin: .4rem 0; }
@@ -64,7 +75,40 @@ const LAENDER = ["Baden-Württemberg","Bayern","Berlin","Brandenburg","Bremen","
   "Saarland","Sachsen","Sachsen-Anhalt","Schleswig-Holstein","Thüringen"];
 
 const FIELD = { GROSS:0, INCOME_TAX:1, SOLIDARITY:2, CHURCH_TAX:3, CONTRIBUTIONS:4,
-                NET:5, PENSION:6, HEALTH:7, CARE:8, UNEMPLOYMENT:9 };
+                NET:5, PENSION:6, HEALTH:7, CARE:8, UNEMPLOYMENT:9,
+                // The § 39b working, under the Programmablaufplan's own variable names.
+                ANNUAL_GROSS:10, TABLE_ALLOWANCES:11, VORSORGEPAUSCHALE:12,
+                TAXABLE_ANNUAL:13, ANNUAL_INCOME_TAX:14, SURCHARGE_BASE:15 };
+
+// Where each figure comes from. The citations are structural — a paragraph number, not an
+// amount — so they do not go stale when a rate changes; the amounts all come from the engine.
+const WHY = {
+  [FIELD.INCOME_TAX]: {
+    law: "§ 39b EStG · BMF-Programmablaufplan",
+    text: "Der PAP rechnet den Monatslohn aufs Jahr hoch, zieht die Freibeträge und die " +
+          "Vorsorgepauschale ab, wendet den Tarif des § 32a auf den Rest an und teilt " +
+          "wieder durch zwölf. Die Zwischenschritte stehen unten.",
+    chain: true,
+  },
+  [FIELD.SOLIDARITY]: {
+    law: "SolzG 1995 · § 3, § 4",
+    text: "5,5 % der Lohnsteuer, aber erst oberhalb der Freigrenze und dann zunächst " +
+          "abgemildert. Unterhalb bleibt er null — deshalb steht hier bei den meisten " +
+          "Gehältern 0,00 €.",
+  },
+  [FIELD.CHURCH_TAX]: {
+    law: "Kirchensteuergesetze der Länder · § 51a EStG",
+    text: "8 % in Bayern und Baden-Württemberg, 9 % sonst — bemessen auf die Lohnsteuer, " +
+          "die mit Kinderfreibeträgen gerechnet wird (§ 51a Abs. 2). Die Kappung, die die " +
+          "meisten Landeskirchen anwenden, ist nicht abgebildet.",
+  },
+  [FIELD.PENSION]: { law: "§ 158 SGB VI", text: "18,6 % geteilt durch zwei, bis zur Beitragsbemessungsgrenze." },
+  [FIELD.HEALTH]: { law: "§ 241 SGB V", text: "14,6 % geteilt durch zwei, plus die Hälfte des kassenindividuellen Zusatzbeitrags." },
+  [FIELD.CARE]: { law: "§ 55 SGB XI", text: "3,6 % geteilt durch zwei, mit Zuschlag für Kinderlose ab 23 und Abschlag je Kind ab dem zweiten. In Sachsen trägt der Arbeitnehmer einen Punkt mehr." },
+  [FIELD.UNEMPLOYMENT]: { law: "§ 341 SGB III", text: "2,6 % geteilt durch zwei, bis zur selben Grenze wie die Rentenversicherung." },
+  [FIELD.CONTRIBUTIONS]: { law: "SGB III / V / VI / XI", text: "Die Summe der vier Zweige. Jeder ist oben einzeln aufgeführt." },
+  [FIELD.NET]: { law: "—", text: "Brutto abzüglich aller Posten darüber. Vorläufig: der Jahresausgleich rechnet ab." },
+};
 
 const ERRORS = {
   "-1": "Für dieses Jahr liegen keine Daten vor.",
@@ -90,8 +134,11 @@ for (let y = last; y >= first; y--) yearSelect.add(new Option(y, y));
 const landSelect = document.getElementById("land");
 LAENDER.forEach((name, i) => landSelect.add(new Option(name, i)));
 landSelect.value = "9";
+// The Datenstand: the digest of the statutory data these figures rest on. Two people quoting
+// the same one are looking at the same law rather than assuming they are.
+const digest = BigInt.asUintN(64, wasm.casivell_fingerprint(last)).toString(16).padStart(16, "0");
 document.getElementById("basis").textContent =
-  `Rechtsstand ${first === last ? first : `${first}–${last}`}, gesetzlich in Kraft.`;
+  `Rechtsstand ${first === last ? first : `${first}–${last}`}, gesetzlich in Kraft. Datenstand ${digest}.`;
 
 const value = id => Number(document.getElementById(id).value);
 
@@ -111,8 +158,22 @@ function render() {
   }
 
   const get = f => Number(wasm.casivell_result(f));
-  const row = (label, field, cls = "") =>
-    `<tr class="${cls}"><td>${label}</td><td>${euro(get(field))}</td></tr>`;
+  const row = (label, field, cls = "") => {
+    const why = WHY[field] ? ` why" data-field="${field}` : "";
+    return `<tr class="${cls}${why}"><td>${label}</td><td>${euro(get(field))}</td></tr>`;
+  };
+
+  // The § 39b chain, shown when the Lohnsteuer line is opened. Every number is the engine's;
+  // nothing here is recomputed in JavaScript, because a second implementation would be a
+  // second thing to be wrong.
+  const chain = () => `<div class="chain">
+    <span>Jahresarbeitslohn <code>ZRE4</code></span><span>${euro(get(FIELD.ANNUAL_GROSS))}</span>
+    <span>− Tabellenfreibeträge <code>ZTABFB</code></span><span>−${euro(get(FIELD.TABLE_ALLOWANCES))}</span>
+    <span>− Vorsorgepauschale <code>VSP</code></span><span>−${euro(get(FIELD.VORSORGEPAUSCHALE))}</span>
+    <span class="rule">= zu versteuernder Betrag <code>ZVE</code></span><span>${euro(get(FIELD.TAXABLE_ANNUAL))}</span>
+    <span>Jahreslohnsteuer <code>LSTJAHR</code></span><span>${euro(get(FIELD.ANNUAL_INCOME_TAX))}</span>
+    <span class="rule">÷ 12 = Lohnsteuer im Monat</span><span>${euro(get(FIELD.INCOME_TAX))}</span>
+  </div>`;
 
   out.innerHTML = `<table>
     ${row("Bruttolohn", FIELD.GROSS)}
@@ -125,7 +186,26 @@ function render() {
     ${row("Pflegeversicherung", FIELD.CARE, "sub")}
     ${row("Arbeitslosenversicherung", FIELD.UNEMPLOYMENT, "sub")}
     ${row("Nettolohn", FIELD.NET, "total")}
-  </table>`;
+  </table>
+  <p class="sub" style="margin-top:.75rem">Auf eine Zeile klicken, um zu sehen, welche Regel sie erzeugt hat.</p>
+  <div id="why"></div>`;
+
+  // Explainability: every figure names the provision that produced it. Delegated from the
+  // table so it survives each re-render.
+  out.querySelector("table").addEventListener("click", event => {
+    const tr = event.target.closest("tr.why");
+    const panel = document.getElementById("why");
+    if (!tr) return;
+    const field = Number(tr.dataset.field);
+    if (panel.dataset.open === String(field)) { panel.innerHTML = ""; panel.dataset.open = ""; return; }
+    const why = WHY[field];
+    panel.dataset.open = String(field);
+    panel.innerHTML = `<dl class="explain">
+      <dt>${tr.cells[0].textContent.trim()} — ${why.law}</dt>
+      <dd>${why.text}</dd>
+      ${why.chain ? chain() : ""}
+    </dl>`;
+  });
 }
 
 document.getElementById("f").addEventListener("input", render);

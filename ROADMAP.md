@@ -408,6 +408,9 @@ near 2026 would have passed.
 - [x] **A browser page that uses it** — `web/index.html`, two files, no framework and no
       bundler. Built together with the ABI deliberately: an ABI with no consumer is structure
       without a user, which is the same mistake the scenario DAG was declined for.
+- [x] **The explainability view.** Every figure in the table names the provision that produced
+      it, and the Lohnsteuer line opens the § 39b working in the Programmablaufplan's own
+      variable names — the same chain the CLI prints, from the same numbers.
 - [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
 
 **The convention.** Two calls, because returning a struct across a C ABI needs pointers and
@@ -429,9 +432,18 @@ transcribed for 2026, so the page would have offered a year the engine refuses.
 `casivell_enacted_years` now *probes* the years that actually compute rather than asserting a
 range, so adding the 2025 PAP widens the picker by itself.
 
+**Nothing in the explainability panel is recomputed in JavaScript.** Every figure comes from
+the engine through `casivell_result`, because a second implementation would be a second thing
+to be wrong. The citations are structural — a paragraph number, never an amount — so they do
+not go stale when a rate changes. The footer carries the **Datenstand**, the same fingerprint
+`casivell law` prints, so two people quoting one are looking at the same law rather than
+assuming they are.
+
 **Verified end to end**, not assumed: the module was instantiated in Node and its figures
 compared against the CLI. Lohnsteuer 921,25, RV 511,50, ALV 71,50, KV 481,25, PV 132,00, netto
-3 382,50 — identical to the cent.
+3 382,50 — identical to the cent. The § 39b chain matches line for line —
+66 000,00 − 1 266,00 − 13 299,00 = 51 435,00, then 11 055,00 ÷ 12 = 921,25 — and a test in the
+ABI asserts that identity so a panel cannot show a derivation that does not derive.
 
 ### Phase 5 — the rest · ~5 weeks
 

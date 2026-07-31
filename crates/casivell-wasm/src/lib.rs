@@ -51,7 +51,7 @@
 use core::cell::RefCell;
 
 use casivell_core::{Money, Rate, TaxYear};
-use casivell_lawdata::{Bundesland, TaxClass};
+use casivell_lawdata::{Bundesland, Fingerprinted as _, LawYear, TaxClass};
 use casivell_payroll::{Employment, HealthCover, NetPay, PayPeriod, PayrollLaw, net_pay};
 use casivell_social::Insured;
 
@@ -94,8 +94,25 @@ pub mod field {
     pub const CARE: i32 = 8;
     /// Unemployment insurance alone.
     pub const UNEMPLOYMENT: i32 = 9;
+
+    // The § 39b working, in the Programmablaufplan's own order and under its own variable
+    // names. These are what turn a net figure into something a person can check: the annual
+    // wage, what came off it, and the tariff amount that produced the tax.
+    /// `ZRE4`: the annualised gross the PAP works from.
+    pub const ANNUAL_GROSS: i32 = 10;
+    /// `ZTABFB`: the fixed table allowances.
+    pub const TABLE_ALLOWANCES: i32 = 11;
+    /// `VSP`: the Vorsorgepauschale actually deducted.
+    pub const VORSORGEPAUSCHALE: i32 = 12;
+    /// `ZVE`: the taxable annual amount the tariff was applied to.
+    pub const TAXABLE_ANNUAL: i32 = 13;
+    /// `LSTJAHR`: the annual Lohnsteuer the period figure was derived from.
+    pub const ANNUAL_INCOME_TAX: i32 = 14;
+    /// `JBMG`: the annual § 51a base, which the surcharges are levied on.
+    pub const SURCHARGE_BASE: i32 = 15;
+
     /// One past the last valid index.
-    pub const COUNT: i32 = 10;
+    pub const COUNT: i32 = 16;
 }
 
 thread_local! {
@@ -174,6 +191,33 @@ pub extern "C" fn casivell_result(field: i32) -> i64 {
         Some(pay) => read(pay, field),
         None => i64::from(error::FIELD),
     })
+}
+
+/// The fingerprint of the statutory data the last calculation used.
+///
+/// The same digest `casivell law` prints as *Datenstand*. A page showing it lets a user say
+/// which data produced a figure they wrote down — and lets two people confirm they are looking
+/// at the same law rather than assuming it.
+///
+/// Returns `0` where no calculation has succeeded.
+#[expect(
+    unsafe_code,
+    reason = "the export attribute only; the function body contains no unsafe operation"
+)]
+#[unsafe(no_mangle)]
+pub extern "C" fn casivell_fingerprint(year: i32) -> i64 {
+    let digest = u16::try_from(year)
+        .ok()
+        .and_then(|value| TaxYear::new(value).ok())
+        .and_then(|value| LawYear::for_year(value).ok())
+        .map(|law| law.fingerprint().value());
+    match digest {
+        // The digest is a u64 and the ABI carries i64. Reinterpreting keeps all sixty-four
+        // bits; the caller formats it as unsigned hex, which is how it is displayed anywhere
+        // else in this repository.
+        Some(value) => i64::from_ne_bytes(value.to_ne_bytes()),
+        None => 0,
+    }
 }
 
 /// The first and last years this ABI can actually compute, packed as `first * 10_000 + last`.
@@ -279,6 +323,17 @@ fn tax_class(index: i32) -> Result<TaxClass, i32> {
     }
 }
 
+/// `ZRE4`: the annualised gross the Programmablaufplan works from.
+///
+/// Not stored on the result, because the PAP derives it from the period and the gross and then
+/// has no further use for it. Recovered the same way here rather than added to the payroll
+/// crate's output for one consumer's benefit.
+fn annual_gross(pay: &NetPay) -> i64 {
+    pay.gross
+        .mul_int(pay.period.periods_per_year())
+        .map_or(i64::from(error::FIELD), casivell_core::Money::cents)
+}
+
 /// One figure from a computed payslip, in cents.
 fn read(pay: &NetPay, which: i32) -> i64 {
     let contributions = &pay.monthly_contributions;
@@ -293,13 +348,24 @@ fn read(pay: &NetPay, which: i32) -> i64 {
         field::HEALTH => contributions.health.employee.cents(),
         field::CARE => contributions.care.employee.cents(),
         field::UNEMPLOYMENT => contributions.unemployment.employee.cents(),
+
+        field::ANNUAL_GROSS => annual_gross(pay),
+        field::TABLE_ALLOWANCES => pay.withholding.table_allowances.cents(),
+        field::VORSORGEPAUSCHALE => pay.withholding.vorsorgepauschale.cents(),
+        field::TAXABLE_ANNUAL => pay.withholding.taxable_annual_amount.cents(),
+        field::ANNUAL_INCOME_TAX => pay.withholding.annual_income_tax.cents(),
+        field::SURCHARGE_BASE => pay.withholding.annual_church_tax_base.cents(),
+
         _ => i64::from(error::FIELD),
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{casivell_enacted_years, casivell_payslip, casivell_result, error, field};
+    use super::{
+        casivell_enacted_years, casivell_fingerprint, casivell_payslip, casivell_result, error,
+        field,
+    };
 
     /// A monthly payslip through the ABI must equal the one the engine computes directly.
     ///
@@ -463,6 +529,49 @@ mod tests {
                 );
             }
         }
+    }
+
+    /// The § 39b working must reconcile as the Programmablaufplan's own chain, or an
+    /// "explainability" panel built on it would show a derivation that does not derive.
+    ///
+    /// `ZRE4 − ZTABFB − VSP = ZVE`, and the period's tax is the annual figure apportioned.
+    #[test]
+    fn the_pap_working_reconciles() {
+        assert_eq!(
+            casivell_payslip(550_000, 0, 2026, 1, 9, 30, 0, 0, 0, 29_000),
+            0
+        );
+        let get = casivell_result;
+
+        assert_eq!(get(field::ANNUAL_GROSS), get(field::GROSS) * 12);
+        assert_eq!(
+            get(field::ANNUAL_GROSS) - get(field::TABLE_ALLOWANCES) - get(field::VORSORGEPAUSCHALE),
+            get(field::TAXABLE_ANNUAL),
+            "ZRE4 − ZTABFB − VSP must equal ZVE"
+        );
+        // The monthly tax is the annual figure divided twelve ways, to within the cent the
+        // PAP's own apportionment rounds by.
+        let implied = get(field::ANNUAL_INCOME_TAX) / 12;
+        assert!((implied - get(field::INCOME_TAX)).abs() <= 100);
+        assert!(get(field::SURCHARGE_BASE) > 0);
+    }
+
+    /// The fingerprint must match the engine's, so a figure written down beside it can be
+    /// traced to the data that produced it.
+    #[test]
+    fn the_fingerprint_matches_the_engine() {
+        use casivell_core::TaxYear;
+        use casivell_lawdata::{Fingerprinted as _, LawYear};
+
+        let expected = LawYear::for_year(TaxYear::new(2026).unwrap())
+            .unwrap()
+            .fingerprint()
+            .value();
+        let reported = casivell_fingerprint(2026);
+        assert_eq!(u64::from_ne_bytes(reported.to_ne_bytes()), expected);
+
+        // A year with no enacted data has no fingerprint to report.
+        assert_eq!(casivell_fingerprint(1999), 0);
     }
 
     /// Every tax class and every state must be reachable through the boundary.
