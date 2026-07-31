@@ -1,0 +1,47 @@
+$ casivell assess --gross 5000 --class 1 --children 1 --capital 3000 --medical 4000 --disability 50
+
+Casivell — Jahresveranlagung 2026
+  Estimated, not a Steuerbescheid. See the notes.
+
+  Zu versteuerndes Einkommen (§ 2 EStG)
+    Bruttoarbeitslohn                               60.000,00  
+    − Werbungskosten (§ 9, § 9a)                     1.230,00  Pauschbetrag
+    = Einkünfte (§ 19)                              58.770,00  
+    = Gesamtbetrag der Einkünfte                    58.770,00  
+    − Altersvorsorge (§ 10 Abs. 1 Nr. 2)             5.580,00  
+    − Sonstige Vorsorge (§ 10 Abs. 1 Nr. 3)          6.154,80  Satz 4 override
+    − Übrige Sonderausgaben (§§ 10–10c)                 36,00  Pauschbetrag
+    − Außergewöhnliche Belastungen (§§ 33, 33b)      3.453,90  
+      4.000,00 € of costs less the 1.686,10 € zumutbare Belastung (§ 33 Abs. 3)
+      including a 1.140,00 € Behinderten-Pauschbetrag, not reduced by the threshold
+    = Einkommen                                     43.545,30  
+
+  Steuer
+    zu versteuerndes Einkommen                      43.545,30  
+    Einkommensteuer (§ 32a)                          8.353,00  
+    Solidaritätszuschlag                                 0,00  
+    Kirchensteuer                                        0,00  
+    = Gesamtbelastung                                8.353,00  
+
+  Kinder (§ 31 Günstigerprüfung)
+    The Kindergeld of 3.108,00 € wins; the Kinderfreibetrag is not granted.
+
+  Abrechnung
+    Lohnsteuer einbehalten                           9.510,96  
+    Erstattung                                       1.157,96  back
+
+  Kapitalerträge (§ 32d EStG)
+    Gross 3.000,00 €, less 1.000,00 € Sparer-Pauschbetrag, leaves 2.000,00 € taxable.
+    Taxed at the flat 25 % (Abs. 1); electing the tariff would cost more.
+    Tax 500,00 €, Soli 0,00 €, Kirchensteuer 0,00 €, total 500,00 €.
+
+  Notes
+  · An estimate, not a liability. § 10's interaction has not been reconciled
+    against a real Steuerbescheid, and außergewöhnliche Belastungen and the
+    other income categories are not modelled.
+  · Withheld is this salary's own Lohnsteuer for a full year at a steady rate.
+    A year that was not steady will have withheld something different.
+  · The engine reports this assessment as inexact.
+
+  Not tax advice (§§ 1–4 StBerG).
+

@@ -60,6 +60,34 @@ export const MESSAGES = {
     yes: "ja",
     no: "nein",
     explainHint: "Auf eine Zeile klicken, um zu sehen, welche Regel sie erzeugt hat.",
+    why: {
+      incomeTax: { law: "§ 39b EStG · BMF-Programmablaufplan",
+        text: "Der PAP rechnet den Monatslohn aufs Jahr hoch, zieht die Freibeträge und die " +
+              "Vorsorgepauschale ab, wendet den Tarif des § 32a auf den Rest an und teilt " +
+              "wieder durch zwölf. Die Zwischenschritte stehen unten." },
+      solidarity: { law: "SolzG 1995 · § 3, § 4",
+        text: "5,5 % der Lohnsteuer, aber erst oberhalb der Freigrenze und dann zunächst " +
+              "abgemildert. Unterhalb bleibt er null — deshalb steht hier bei den meisten " +
+              "Gehältern 0,00 €." },
+      churchTax: { law: "Kirchensteuergesetze der Länder · § 51a EStG",
+        text: "8 % in Bayern und Baden-Württemberg, 9 % sonst — bemessen auf die Lohnsteuer, " +
+              "die mit Kinderfreibeträgen gerechnet wird (§ 51a Abs. 2). Die Kappung, die die " +
+              "meisten Landeskirchen anwenden, ist nicht abgebildet." },
+      pension: { law: "§ 158 SGB VI",
+        text: "18,6 % geteilt durch zwei, bis zur Beitragsbemessungsgrenze." },
+      health: { law: "§ 241 SGB V",
+        text: "14,6 % geteilt durch zwei, plus die Hälfte des kassenindividuellen " +
+              "Zusatzbeitrags." },
+      care: { law: "§ 55 SGB XI",
+        text: "3,6 % geteilt durch zwei, mit Zuschlag für Kinderlose ab 23 und Abschlag je " +
+              "Kind ab dem zweiten. In Sachsen trägt der Arbeitnehmer einen Punkt mehr." },
+      unemployment: { law: "§ 341 SGB III",
+        text: "2,6 % geteilt durch zwei, bis zur selben Grenze wie die Rentenversicherung." },
+      contributions: { law: "SGB III / V / VI / XI",
+        text: "Die Summe der vier Zweige. Jeder ist oben einzeln aufgeführt." },
+      net: { law: "—",
+        text: "Brutto abzüglich aller Posten darüber. Vorläufig: der Jahresausgleich rechnet ab." },
+    },
     captionPayslip: "Lohnabrechnung: Brutto, Abzüge und Nettolohn",
     captionClasses: "Steuerklassenvergleich: monatliche Abzüge, Netto und Veranlagung",
     captionProject: "Projektion: Vermögen und Rentenanwartschaft je Jahr",
@@ -149,6 +177,34 @@ export const MESSAGES = {
     yes: "yes",
     no: "no",
     explainHint: "Select a row to see the provision that produced it.",
+    why: {
+      incomeTax: { law: "§ 39b EStG · BMF Programmablaufplan",
+        text: "The PAP annualises the monthly wage, deducts the table allowances and the " +
+              "Vorsorgepauschale, applies the § 32a tariff to what is left, and divides by " +
+              "twelve again. The intermediate steps are below." },
+      solidarity: { law: "SolzG 1995 · § 3, § 4",
+        text: "5.5 % of the Lohnsteuer — but only above the Freigrenze, and tapered at first. " +
+              "Below it there is none, which is why most salaries show 0,00 € here." },
+      churchTax: { law: "Kirchensteuergesetze der Länder · § 51a EStG",
+        text: "8 % in Bayern and Baden-Württemberg, 9 % elsewhere — levied on the Lohnsteuer " +
+              "recomputed *with* Kinderfreibeträge (§ 51a Abs. 2). The Kappung most " +
+              "Landeskirchen apply is not modelled." },
+      pension: { law: "§ 158 SGB VI",
+        text: "18.6 % halved between employer and employee, up to the " +
+              "Beitragsbemessungsgrenze." },
+      health: { law: "§ 241 SGB V",
+        text: "14.6 % halved, plus half of your fund's own Zusatzbeitrag." },
+      care: { law: "§ 55 SGB XI",
+        text: "3.6 % halved, with a surcharge for the childless from age 23 and a reduction " +
+              "per child from the second. In Sachsen the employee carries one point more." },
+      unemployment: { law: "§ 341 SGB III",
+        text: "2.6 % halved, up to the same ceiling as the pension contribution." },
+      contributions: { law: "SGB III / V / VI / XI",
+        text: "The sum of the four branches, each listed separately above." },
+      net: { law: "—",
+        text: "Gross less everything above it. Provisional: the annual assessment settles the " +
+              "difference." },
+    },
     captionPayslip: "Payslip: gross, deductions and net pay",
     captionClasses: "Tax class comparison: monthly withholding, net and assessment",
     captionProject: "Projection: wealth and pension entitlement by year",
@@ -210,11 +266,15 @@ export const MESSAGES = {
   },
 };
 
-/// The language to start in: a stored choice, else the browser's, else German.
+/// The language to start in: an explicit `?lang=`, else a stored choice, else the browser's,
+/// else German.
 ///
-/// German is the fallback rather than English because the figures, the terms and the documents
-/// they are compared against are all German.
-export function initialLanguage(stored, navigatorLanguages = []) {
+/// The URL parameter comes first so a link can carry its language — useful for documentation
+/// and for sending someone a figure in a language they read. German is the fallback rather
+/// than English because the figures, the terms and the documents they are compared against
+/// are all German.
+export function initialLanguage(stored, navigatorLanguages = [], requested = null) {
+  if (requested && MESSAGES[requested]) return requested;
   if (stored && MESSAGES[stored]) return stored;
   for (const tag of navigatorLanguages) {
     const base = String(tag).slice(0, 2).toLowerCase();

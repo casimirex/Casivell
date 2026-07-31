@@ -1,0 +1,44 @@
+$ casivell --gross 5500 --class 1 --state NW
+
+Casivell — Lohnabrechnung
+  2026 · Steuerklasse I · NW · monthly
+
+  Bruttoentgelt                                     5.500,00 €
+
+  Steuern
+    Lohnsteuer                                       -921,25 €
+    Solidaritätszuschlag                                0,00 €
+
+  Sozialversicherung (Arbeitnehmeranteil)
+    Rentenversicherung          9,30 %               -511,50 €
+    Arbeitslosenversicherung    1,30 %                -71,50 €
+    Krankenversicherung         8,75 %               -481,25 €
+    Pflegeversicherung          2,40 %               -132,00 €
+    Summe                                          -1.196,25 €
+
+  ────────────────────────────────────────────────────────────
+  Nettoentgelt                                      3.382,50 €
+  (61,50 % of gross)
+
+  Arbeitgeber
+    Sozialversicherung                              1.163,25 €
+    Gesamtkosten der Beschäftigung                  6.663,25 €
+
+  Wie die Lohnsteuer ermittelt wurde (§ 39b EStG, BMF-PAP 2026)
+    Jahresarbeitslohn (ZRE4)                       66.000,00 €
+    − Tabellenfreibeträge (ZTABFB)                 -1.266,00 €
+    − Vorsorgepauschale (VSP)                     -13.299,00 €
+    = zu versteuernder Betrag (ZVE)                51.435,00 €
+    Jahreslohnsteuer (LSTJAHR)                     11.055,00 €
+    ÷ 12 = Lohnsteuer im Monat                        921,25 €
+
+  Assumptions and limits
+  · Zusatzbeitrag 2,90 % — a published average, not your fund's rate. Pass --kvz.
+  · Childless surcharge applied (§ 55 Abs. 3 SGB XI). Pass --parent if wrong.
+  · Not modelled: one-off payments (§ 39b Abs. 3), Versorgungsbezüge,
+    Altersentlastungsbetrag, Faktorverfahren, ELStAM-Freibeträge.
+  · Withholding is provisional. The annual assessment settles the difference.
+  · Statutory basis: enacted law, verified 2026-07-30.
+
+  Not tax advice (§§ 1–4 StBerG).
+

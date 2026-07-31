@@ -1,0 +1,36 @@
+$ casivell property --price 400000 --state NW --deposit 80000 --agent 3,57
+
+Casivell — Immobilienkauf 2026
+  400.000,00 € in NordrheinWestfalen
+
+  Kaufnebenkosten
+    Grunderwerbsteuer (6,50 %)            26.000,00 €  statutory
+    Notar und Grundbuch                    8.000,00 €  estimated
+    Maklerprovision                       14.280,00 €  contractual
+    = Nebenkosten (12,07 %)               48.280,00 €
+    = Gesamtaufwand                      448.280,00 €
+
+  Finanzierung
+    Eigenkapital                          80.000,00 €  20,00 % of the price
+    Darlehen                             368.280,00 €
+    Monatliche Rate                        1.687,95 €
+    Laufzeit                                  29 J  0 M
+    Zinsen insgesamt                     218.013,77 €
+
+    After the 10-year Zinsbindung:
+      Restschuld                         280.241,25 €  to refinance
+      Zinsen bis dahin                   114.515,25 €
+
+  Notes
+  · Grunderwerbsteuer is the state's own rate and is exact. Notary and land
+    registry approximate the GNotKG fee schedule, which is not implemented.
+  · The Nebenkosten buy nothing a bank lends against, so they come out of the
+    deposit: a nominal 20 % down is a good deal less once they are paid.
+  · The Zinsbindung is not the term. The Restschuld above is refinanced at
+    whatever rates then are, which nobody can tell you.
+  · Not modelled: maintenance, Hausgeld, the cost of selling, or what the
+    property is worth later. A buy-versus-rent answer turns on those, and
+    they are assumptions rather than arithmetic.
+
+  Not tax or investment advice.
+

@@ -70,6 +70,12 @@ test("statutory terms are German and shared, not translated", () => {
   }
 });
 
+test("an explicit ?lang= beats everything", () => {
+  assert.equal(initialLanguage("de", ["de-DE"], "en"), "en");
+  assert.equal(initialLanguage("en", ["en-GB"], "de"), "de");
+  assert.equal(initialLanguage("en", ["en-GB"], "fr"), "en", "an unknown one is ignored");
+});
+
 test("a stored choice wins", () => {
   assert.equal(initialLanguage("en", ["de-DE"]), "en");
   assert.equal(initialLanguage("de", ["en-GB"]), "de");

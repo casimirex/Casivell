@@ -1,0 +1,31 @@
+$ casivell compare rent.casivell buy.casivell
+
+Casivell — Szenarienvergleich
+  A  rent.casivell
+  B  buy.casivell
+
+  Was sich unterscheidet
+    only B:  --property-growth 2,0 --buy 3:400000:100000:NW:900
+
+  Ergebnis nach 25 Jahren                     A               B           B − A
+  ──────────────────────────────────────────────────────────────────────────────
+  Nettovermögen                   1.151.341,41    1.022.423,82     -128.917,59
+  Geldvermögen                    1.151.341,41      514.627,31     -636.714,10
+  Tiefster Stand                      2.141,58      -16.322,88      -18.464,46
+  Steuern einbehalten               270.597,96      270.597,96            0,00
+  Erstattungen                           48,00           48,00            0,00
+  Sozialabgaben                     391.198,92      391.198,92            0,00
+  Elterngeld                              0,00            0,00            0,00
+  Hypothekenzinsen                        0,00      183.252,66      183.252,66
+  Entgeltpunkte                          25,37           25,37            0,00
+
+  Notes
+  · Nettovermögen includes any property, less its mortgage; Geldvermögen
+    does not. A buyer's cash is lower and their total may not be.
+  · Tiefster Stand is the lowest financial wealth reached at any point. An
+    end state can hide a plan that passed through insolvency on the way.
+  · Both scenarios use their own saved assumptions. Where those differ, the
+    difference below is partly the assumptions and not only the choices.
+
+  Not tax or investment advice.
+

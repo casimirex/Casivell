@@ -1,0 +1,29 @@
+$ casivell classes --gross 5000 --partner 1800
+
+Casivell — Steuerklassenvergleich 2026
+  Two salaries: 5.000,00 € and 1.800,00 € a month
+
+  The annual income tax is 9.180,00 € under all three. The tax class decides
+  when it is paid and by which spouse — not how much.
+
+  Arrangement          Higher/mo   Lower/mo     Net/mo     At assessment
+  ──────────────────────────────────────────────────────────────────────
+  IV / IV                782,41      52,41   4.486,18     837,84 € back
+  III / V                401,83     230,91   4.688,26   1.587,12 € owed
+  IV + Faktor 0,916      716,66      48,00   4.556,34       4,08 € owed
+
+  Notes
+  · A negative figure at assessment is a demand; a positive one a refund.
+  · III/V takes least each month and owes most at the end. IV/IV is the
+    reverse. IV+Faktor aims to land near zero, and splits the burden
+    between the spouses in proportion to their salaries.
+  · The choice does change wage-replacement benefits, which are computed
+    from net pay: Elterngeld, Arbeitslosengeld and Krankengeld are all
+    higher in class III than in class V, for the same household.
+  · Settlement compares withheld income tax against the joint income tax.
+    Solidaritätszuschlag and church tax follow it in the same direction.
+  · Assumes both salaries run all year and no other income. The Faktor is
+    checked against § 32a rather than a Prüftabelle; none is published.
+
+  Not tax advice (§§ 1–4 StBerG).
+

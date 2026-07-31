@@ -1,0 +1,37 @@
+$ casivell project --gross 4000 --class 1 --children 1 --expenses 1800 --child-born 2 --parental-leave 2:14 --years 8
+
+Casivell — Haushaltsprojektion
+  8 years from 2026 · nominal (euro of the day)
+  Assumptions: 2,00 % prices, 2,80 % wages, 0,00 % investment return, 0,00 % pay growth
+
+  Life events
+  · 2028: a child is born; Kindererziehungszeit follows (§ 56 SGB VI)
+  · 2028 to 2029: parental leave, Basiselterngeld for 14 months
+
+  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo
+  ───────────────────────────────────────────────────────────────────────────────────────────────────
+  2026   4.000,00    2.622,17        0,00     822,17       0,00      9.866,04      0,92        39,29
+  ┈┈┈┈┈┈┈┈  enacted law ends here; rows below are projected
+  2027   4.000,00    2.631,25        0,00     795,25       0,96     19.410,00      1,82        79,68
+  2028       0,00        0,00    1.650,73    -221,99       1,00     16.747,12      2,74       123,07
+  2029   4.000,00    2.649,42    1.650,73     739,25       0,00     23.620,74      4,45       205,44
+  2030   4.000,00    2.658,50        0,00     710,13     411,80     32.554,10      6,27       297,92
+  2031   4.000,00    2.667,67        0,00     680,33       1,00     40.719,06      7,16       349,62
+  2032   4.000,00    2.676,84        0,00     649,75       0,96     48.517,02      7,95       398,72
+  2033   4.000,00    2.686,09        0,00     618,46       0,92     55.939,46      8,71       449,22
+
+  Notes
+  · Nominal figures. Pass --real to see them in today's purchasing power.
+  · Rows past the marked line rest on projected statutory parameters, not law.
+  · Points are Entgeltpunkte; Pension/mo is what that record would pay at the
+    Rentenwert then in force, with no early-claim reduction applied.
+  · Tax shown is withholding. The annual assessment settles the difference,
+    and its refund or demand lands the following July in the Settle column.
+  · Elterngeld is tax-free but raises the rate on the rest of the year's income
+    (§ 32b EStG). That cost is inside the Settle column, a year later.
+  · Kindererziehungszeit is credited only where --child-born says a child arrived;
+    parental leave alone does not imply one, since either can occur without the other.
+  · Not modelled: capital income, or income other than this employment.
+
+  Not tax or investment advice.
+

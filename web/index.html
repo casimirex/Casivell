@@ -12,11 +12,20 @@
   body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 2rem 1rem; }
   h1 { font-size: 1.5rem; margin: 0 0 .25rem; }
   .sub { opacity: .7; margin: 0 0 2rem; font-size: .9rem; }
-  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); gap: 1rem; }
+  /* `minmax(11rem, …)` forces a 176px track even when the viewport is narrower, which
+     overflowed at 390px and broke WCAG 1.4.10 Reflow. `min()` lets a track shrink to the
+     column width on a phone. */
+  form { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(11rem, 100%), 1fr));
+         gap: 1rem; }
   label { display: grid; gap: .25rem; font-size: .85rem; }
+  /* `display: grid` above outranks the user-agent's `[hidden] { display: none }`, so every
+     field marked hidden was still on screen. A screenshot found this; no syntax check could. */
+  [hidden] { display: none !important; }
   input, select { font: inherit; padding: .4rem .5rem; border: 1px solid var(--line); border-radius: .3rem; background: transparent; color: inherit; }
   .full { grid-column: 1 / -1; }
   table { width: 100%; border-collapse: collapse; margin-top: 2rem; }
+  /* Wide tables scroll inside their own box rather than pushing the page sideways. */
+  .scroller { overflow-x: auto; }
   td { padding: .35rem 0; border-bottom: 1px solid var(--line); }
   td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   tr.total td { font-weight: 600; border-bottom: 2px solid currentColor; }
@@ -25,6 +34,7 @@
      reader, and carrying its own expanded state. It was a click handler on the row, which no
      keyboard user could reach at all. */
   td button.why { font: inherit; background: none; border: 0; padding: .35rem .25rem .35rem 0;
+                  max-width: 100%;
                   color: inherit; cursor: pointer; text-align: left; min-height: 44px;
                   display: flex; align-items: center; gap: .4rem; }
   td button.why:hover { text-decoration: underline dotted; }
@@ -42,7 +52,9 @@
   .explain code { font-size: .95em; opacity: .75; }
   .chain { display: grid; grid-template-columns: 1fr auto; gap: .1rem .75rem;
            font-variant-numeric: tabular-nums; margin: .5rem 0; }
-  .chain .rule { grid-column: 1 / -1; border-top: 1px solid var(--line); }
+  /* The rule is drawn on the label *and* its amount, not by spanning both columns —
+     `grid-column: 1 / -1` pushed every amount onto its own row. */
+  .chain .rule, .chain .rule + span { border-top: 1px solid var(--line); padding-top: .2rem; }
   figure { margin: 1.5rem 0 0; }
   svg.chart { width: 100%; height: auto; display: block; }
   svg.chart .axis { stroke: currentColor; opacity: .3; stroke-width: 1; }
@@ -53,12 +65,14 @@
   svg.chart text { fill: currentColor; font-size: 11px; opacity: .65; }
   figcaption { font-size: .85rem; opacity: .75; margin-top: .5rem; }
   .error { color: #b00; margin-top: 1.5rem; }
-  nav { display: flex; gap: .25rem; margin-bottom: 1.5rem; }
+  nav { display: flex; flex-wrap: wrap; gap: .25rem; margin-bottom: 1.5rem; }
   /* 44px tall: WCAG 2.2's 24×24 minimum with room to spare. */
   nav button { font: inherit; padding: .6rem 1rem; border: 1px solid var(--line);
                background: transparent; color: inherit; border-radius: .3rem; cursor: pointer;
                min-height: 44px; }
-  nav button[aria-pressed="true"] { background: currentColor; color: Canvas; }
+  /* Not `background: currentColor; color: Canvas` — `currentColor` resolves to the *new*
+     colour set on the same element, so that pair rendered white on white. */
+  nav button[aria-pressed="true"] { background: CanvasText; color: Canvas; }
   .lede { margin: 1.5rem 0 0; padding: .75rem 1rem; border-left: 3px solid currentColor;
           background: color-mix(in srgb, currentColor 6%, transparent); font-size: .9rem; }
   th { text-align: left; font-weight: 600; font-size: .85rem; padding: .35rem 0;
@@ -157,37 +171,13 @@ const FIELD = { GROSS:0, INCOME_TAX:1, SOLIDARITY:2, CHURCH_TAX:3, CONTRIBUTIONS
                 ANNUAL_GROSS:10, TABLE_ALLOWANCES:11, VORSORGEPAUSCHALE:12,
                 TAXABLE_ANNUAL:13, ANNUAL_INCOME_TAX:14, SURCHARGE_BASE:15 };
 
-// Where each figure comes from. The citations are structural — a paragraph number, not an
-// amount — so they do not go stale when a rate changes; the amounts all come from the engine.
-// The German prose is kept for both languages here: these are provision-level explanations of
-// German statute, and the terms in them are the ones on the documents.
-const WHY = {
-  [FIELD.INCOME_TAX]: {
-    law: "§ 39b EStG · BMF-Programmablaufplan",
-    text: "Der PAP rechnet den Monatslohn aufs Jahr hoch, zieht die Freibeträge und die " +
-          "Vorsorgepauschale ab, wendet den Tarif des § 32a auf den Rest an und teilt " +
-          "wieder durch zwölf. Die Zwischenschritte stehen unten.",
-    chain: true,
-  },
-  [FIELD.SOLIDARITY]: {
-    law: "SolzG 1995 · § 3, § 4",
-    text: "5,5 % der Lohnsteuer, aber erst oberhalb der Freigrenze und dann zunächst " +
-          "abgemildert. Unterhalb bleibt er null — deshalb steht hier bei den meisten " +
-          "Gehältern 0,00 €.",
-  },
-  [FIELD.CHURCH_TAX]: {
-    law: "Kirchensteuergesetze der Länder · § 51a EStG",
-    text: "8 % in Bayern und Baden-Württemberg, 9 % sonst — bemessen auf die Lohnsteuer, " +
-          "die mit Kinderfreibeträgen gerechnet wird (§ 51a Abs. 2). Die Kappung, die die " +
-          "meisten Landeskirchen anwenden, ist nicht abgebildet.",
-  },
-  [FIELD.PENSION]: { law: "§ 158 SGB VI", text: "18,6 % geteilt durch zwei, bis zur Beitragsbemessungsgrenze." },
-  [FIELD.HEALTH]: { law: "§ 241 SGB V", text: "14,6 % geteilt durch zwei, plus die Hälfte des kassenindividuellen Zusatzbeitrags." },
-  [FIELD.CARE]: { law: "§ 55 SGB XI", text: "3,6 % geteilt durch zwei, mit Zuschlag für Kinderlose ab 23 und Abschlag je Kind ab dem zweiten. In Sachsen trägt der Arbeitnehmer einen Punkt mehr." },
-  [FIELD.UNEMPLOYMENT]: { law: "§ 341 SGB III", text: "2,6 % geteilt durch zwei, bis zur selben Grenze wie die Rentenversicherung." },
-  [FIELD.CONTRIBUTIONS]: { law: "SGB III / V / VI / XI", text: "Die Summe der vier Zweige. Jeder ist oben einzeln aufgeführt." },
-  [FIELD.NET]: { law: "—", text: "Brutto abzüglich aller Posten darüber. Vorläufig: der Jahresausgleich rechnet ab." },
+// Which explanation belongs to which figure. The prose lives in i18n.js and follows the
+// chosen language; the statutory terms inside it stay German, as everywhere else.
+const WHY_FOR = {
+  1: "incomeTax", 2: "solidarity", 3: "churchTax", 4: "contributions",
+  5: "net", 6: "pension", 7: "health", 8: "care", 9: "unemployment",
 };
+const why = field => T.why[WHY_FOR[field]];
 
 // No bindings crate: the module is instantiated directly and its exports are plain numbers.
 const { instance } = await WebAssembly.instantiateStreaming(fetch("casivell_wasm.wasm"), {});
@@ -233,7 +223,7 @@ function render() {
 
   const get = f => Number(wasm.casivell_result(f));
   const row = (label, field, cls = "") => {
-    const cell = WHY[field]
+    const cell = why(field)
       ? `<button type="button" class="why" data-field="${field}" aria-expanded="false"
            aria-controls="why"><span>${label}</span><span class="mark" aria-hidden="true">?</span>
            <span class="vh">${T.explainShow}</span></button>`
@@ -283,12 +273,11 @@ function render() {
       other.setAttribute("aria-expanded", String(!open && other === button)));
 
     if (open) { panel.innerHTML = ""; panel.dataset.open = ""; return; }
-    const why = WHY[field];
     panel.dataset.open = String(field);
     panel.innerHTML = `<dl class="explain">
-      <dt>${button.querySelector("span").textContent} — ${why.law}</dt>
-      <dd>${why.text}</dd>
-      ${why.chain ? chain() : ""}
+      <dt>${button.querySelector("span").textContent} — ${why(field).law}</dt>
+      <dd>${why(field).text}</dd>
+      ${field === 1 ? chain() : ""}
     </dl>`;
   });
 
@@ -328,7 +317,7 @@ function renderClasses() {
     </tr>`;
 
   out.innerHTML = `<p class="lede">${T.classesLede(euro(liability))}</p>
-    <table>
+    <div class="scroller"><table>
       <caption class="vh">${T.captionClasses}</caption>
       <tr><th scope="col">${T.colVariant}</th><th scope="col">${T.colHigher}</th>
           <th scope="col">${T.colLower}</th><th scope="col">${T.colNetTotal}</th>
@@ -337,7 +326,7 @@ function renderClasses() {
       ${row("III / V", ARR.THREE_FIVE)}
       ${row(factor ? `IV + Faktor 0,${String(factor).padStart(3, "0")}` : "IV + Faktor",
             ARR.FOUR_FACTOR)}
-    </table>
+    </table></div>
     ${factor ? "" : `<p class="sub">${T.noFactor}</p>`}
     <dl class="explain">
       <dt>${T.whySameTitle}</dt><dd>${T.whySame}</dd>
@@ -401,7 +390,7 @@ function renderProject() {
   const turns = peak.year !== last.year;
 
   out.innerHTML = `${chart(series)}
-    <table>
+    <div class="scroller"><table>
       <caption class="vh">${T.captionProject}</caption>
       <tr><th scope="col">${T.colYear}</th><th scope="col">${T.colNetMonthly}</th>
           <th scope="col">${T.colSaved}</th><th scope="col">${T.colWealth}</th>
@@ -413,7 +402,7 @@ function renderProject() {
         <td class="num">${euro(r.wealth)}</td>
         <td class="num">${euro(r.pension)}</td>
       </tr>`).join("")}
-    </table>
+    </table></div>
     <dl class="explain">
       <dt>${T.whatsHereTitle}</dt>
       <dd>${T.whatsHere(series.filter(r => r.enacted).at(-1)?.year ?? "?")}</dd>
@@ -512,11 +501,27 @@ function applyLanguage(code) {
 document.getElementById("lang").addEventListener("change", event =>
   applyLanguage(event.target.value));
 
+// A hash lets a link open a particular form — used by the documentation screenshots, and
+// harmless otherwise: `#classes` is exactly what a bookmark of that view should do.
+function formFromHash() {
+  const wanted = location.hash.replace("#", "");
+  return FORMS[wanted] ? wanted : null;
+}
+if (formFromHash()) {
+  currentForm = formFromHash();
+  document.querySelectorAll("nav button").forEach(button =>
+    button.setAttribute("aria-pressed", String(button.dataset.form === currentForm)));
+}
+
 document.getElementById("f").addEventListener("input", show);
 
 let stored = null;
 try { stored = localStorage.getItem("casivell-lang"); } catch { /* private mode */ }
-applyLanguage(initialLanguage(stored, navigator.languages ?? [navigator.language]));
+applyLanguage(initialLanguage(
+  stored,
+  navigator.languages ?? [navigator.language],
+  new URLSearchParams(location.search).get("lang"),
+));
 
 // -------------------------------------------------------------------------
 // Offline

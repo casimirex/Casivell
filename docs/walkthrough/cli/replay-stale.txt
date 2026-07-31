@@ -1,0 +1,8 @@
+$ casivell replay stale.casivell     # a scenario saved under different data
+
+
+  ⚠ The statutory data for 2026 has changed since this scenario was saved
+  (saved aaaaaaaaaaaaaaaa, now e177cfbaa6bb7121). The figures below are computed from the current data,
+  so they will not match what was saved. This is the law being corrected or
+  updated, not an error.
+

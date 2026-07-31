@@ -1,0 +1,472 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Casivell — a walkthrough</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --line: color-mix(in srgb, currentColor 16%, transparent);
+    --soft: color-mix(in srgb, currentColor 5%, transparent);
+    --accent: color-mix(in srgb, currentColor 60%, transparent);
+  }
+  * { box-sizing: border-box; }
+  body { font: 16px/1.65 system-ui, -apple-system, "Segoe UI", sans-serif;
+         max-width: 56rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
+  h1 { font-size: clamp(1.9rem, 5vw, 2.6rem); line-height: 1.15; margin: 0 0 .75rem;
+       letter-spacing: -.02em; }
+  h2 { font-size: 1.4rem; margin: 3.5rem 0 1rem; padding-top: 1.5rem;
+       border-top: 1px solid var(--line); letter-spacing: -.01em; }
+  h3 { font-size: 1.05rem; margin: 2rem 0 .5rem; }
+  p { margin: 0 0 1rem; }
+  .lede { font-size: 1.1rem; opacity: .8; margin-bottom: 2rem; }
+  a { color: inherit; }
+
+  nav.toc { display: flex; flex-wrap: wrap; gap: .4rem; margin: 0 0 1rem;
+            padding: 1rem; background: var(--soft); border-radius: .5rem; }
+  nav.toc a { text-decoration: none; font-size: .85rem; padding: .3rem .6rem;
+              border: 1px solid var(--line); border-radius: .3rem; white-space: nowrap; }
+  nav.toc a:hover { background: var(--line); }
+
+  figure { margin: 1.5rem 0 2rem; }
+  figure img { width: 100%; height: auto; display: block; border: 1px solid var(--line);
+               border-radius: .5rem; }
+  figure.narrow img { max-width: 26rem; }
+  figcaption { font-size: .85rem; opacity: .75; margin-top: .6rem; }
+
+  pre { background: var(--soft); border: 1px solid var(--line); border-radius: .5rem;
+        padding: 1rem 1.1rem; overflow-x: auto; font-size: .8rem; line-height: 1.5;
+        font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; }
+  code { font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace; font-size: .9em; }
+
+  .grid { display: grid; gap: 1rem; margin: 1.25rem 0; }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(min(16rem, 100%), 1fr)); }
+  .card { border: 1px solid var(--line); border-radius: .5rem; padding: 1rem 1.1rem; }
+  .card h3 { margin: 0 0 .4rem; font-size: .95rem; }
+  .card p { margin: 0; font-size: .9rem; opacity: .85; }
+
+  .note { border-left: 3px solid var(--accent); background: var(--soft);
+          padding: .85rem 1.1rem; border-radius: 0 .4rem .4rem 0; font-size: .92rem; }
+  .warn { border-left: 3px solid currentColor; padding: .85rem 1.1rem; font-weight: 500; }
+  .mark { border: 1px solid currentColor; border-radius: 50%; padding: 0 .35em;
+          font-size: .75em; opacity: .6; }
+  ol.limits { padding-left: 1.2rem; }
+  ol.limits li { margin-bottom: .6rem; }
+
+  footer { margin-top: 4rem; padding-top: 1.5rem; border-top: 1px solid var(--line);
+           font-size: .85rem; opacity: .7; }
+  section { scroll-margin-top: 1rem; }
+  @media print {
+    nav.toc { display: none; }
+    h2 { break-before: page; }
+    pre, figure { break-inside: avoid; }
+  }
+</style>
+</head>
+<body>
+<h1>Casivell — a walkthrough</h1>
+<p class="lede">What this software does, shown running. Every screenshot is a real capture of
+the browser build; every terminal block is real output, pasted unedited. Nothing here is a
+mock-up.</p>
+
+<nav class="toc" aria-label="Contents">
+  <a href="#what">1 · What it is</a>
+  <a href="#browser">2 · The browser build</a>
+  <a href="#explain">3 · Explainability</a>
+  <a href="#classes">4 · Tax classes</a>
+  <a href="#projection">5 · Projection</a>
+  <a href="#languages">6 · Languages</a>
+  <a href="#cli">7 · The command line</a>
+  <a href="#scenarios">8 · Scenarios</a>
+  <a href="#trust">9 · Why trust a figure</a>
+  <a href="#limits">10 · What it will not do</a>
+</nav>
+
+<section id="what">
+<h2>1 · What it is</h2>
+<p>Casivell computes German income tax, payroll withholding, social insurance and pension
+entitlement, and projects a household forward from there. It runs entirely on your device —
+in the browser it is a WebAssembly module, and nothing is sent anywhere.</p>
+<p>It exists because getting these figures right is unglamorous and mostly a matter of
+<em>reading the statute carefully</em>. Every number it uses is cited to a primary source and
+carries a status: enacted law, or a projection with stated assumptions.</p>
+<div class="grid two">
+  <div class="card"><h3>Two front ends</h3><p>A browser page with three forms, and a command
+  line with five plus scenario files. The browser covers what most people want; the command
+  line reaches everything the engine does.</p></div>
+  <div class="card"><h3>One engine</h3><p>Both call the same Rust code. The browser figures and
+  the terminal figures are identical to the cent, and this document shows the same household
+  through both so you can check.</p></div>
+</div>
+</section>
+
+<section id="browser">
+<h2>2 · The browser build</h2>
+<p>Enter a gross salary and the circumstances that affect it. The result appears as you type;
+there is no submit button and no network request.</p>
+<figure><img src="screens/01-payslip.png" alt="The Casivell browser page in English, showing a
+gross-to-net calculation for 5.500 € a month in tax class I in Nordrhein-Westfalen. The result
+lists Bruttolohn 5.500,00 €, Lohnsteuer 921,25 €, Solidaritätszuschlag 0,00 €, Sozialabgaben
+1.196,25 € broken into four branches, and Nettolohn 3.382,50 €.">
+<figcaption>Gross to net. <strong>5.500 € → 3.382,50 €</strong> for a childless 30-year-old in
+class I. Each row with a <span class="mark">?</span> can be opened.</figcaption></figure>
+<p class="note"><strong>Why the deduction names stay German.</strong> <em>Lohnsteuer</em>,
+<em>Sozialabgaben</em> and <em>Nettolohn</em> are the words printed on a German payslip. Showing
+"wage tax" would make a figure harder to check against the document it came from, so the terms
+stay and the explanations around them translate.</p>
+</section>
+
+<section id="explain">
+<h2>3 · Every figure names the rule that produced it</h2>
+<p>Selecting a row opens the provision behind it. For the Lohnsteuer, that is the full § 39b
+working in the Programmablaufplan's own variable names — the same chain the command line
+prints, from the same numbers.</p>
+<figure><img src="screens/05-explain.png" alt="The explanation panel for Lohnsteuer, citing
+§ 39b EStG and the BMF Programmablaufplan. It shows the chain: Jahresarbeitslohn ZRE4
+66.000,00 €, minus Tabellenfreibeträge ZTABFB 1.266,00 €, minus Vorsorgepauschale VSP
+13.299,00 €, giving zu versteuernder Betrag ZVE 51.435,00 €, then Jahreslohnsteuer LSTJAHR
+11.055,00 €, divided by 12 to give 921,25 € per month.">
+<figcaption>The § 39b chain. Not one of these numbers is recomputed in JavaScript — a second
+implementation would be a second thing to be wrong.</figcaption></figure>
+<p>Compare it against the same calculation from the command line, further down in §&nbsp;7: the
+figures match line for line.</p>
+</section>
+
+<section id="classes">
+<h2>4 · Tax classes — the comparison that surprises people</h2>
+<p>A married couple picks between three arrangements. The page leads with the fact rather than
+burying it: <strong>the annual tax is identical under all three.</strong></p>
+<figure><img src="screens/03-classes.png" alt="The tax class comparison for salaries of 5.500 €
+and 1.800 € a month. A highlighted note reads: the annual income tax is 10.572,00 € under all
+three arrangements. A table shows IV/IV withholding 921,25 and 52,41 with 1.111,92 € back at
+assessment; III/V withholding 506,83 and 230,91 with 1.719,12 € owed; and IV plus Faktor 0,904
+withholding 832,75 and 47,33 with 11,04 € owed.">
+<figcaption>Same tax, three ways of paying it. III/V takes least each month and owes most at the
+end; IV+Faktor lands within <strong>11 €</strong> of zero.</figcaption></figure>
+<p class="note"><strong>Where the choice does matter, and it is not the tax.</strong>
+Wage-replacement benefits — Elterngeld, Arbeitslosengeld, Krankengeld — are computed from
+<em>net</em> pay, so they follow the class. Choosing one before a birth is a real decision;
+choosing one to "pay less tax" is not.</p>
+</section>
+
+<section id="projection">
+<h2>5 · Projection</h2>
+<p>The same household, forward over decades: month by month through the same payroll code, with
+the year ends charted.</p>
+<figure><img src="screens/04-projection.png" alt="The projection form showing inputs for
+spending, years, return and pay growth, a line chart of wealth from 2026 to 2065 rising to
+2.225.584,79 €, and a table of year, net per month, saved per month, wealth and pension per
+month, with years after 2026 marked with an asterisk.">
+<figcaption>Forty years at 4 % return. The line is <strong>dashed throughout</strong> because
+only the 2026 year-end rests on enacted law — everything after it is projected.</figcaption>
+</figure>
+<p class="note"><strong>The chart is allowed to go down.</strong> With pay that never rises and
+spending that tracks inflation, wealth peaks around the twenty-eighth year and falls. The page
+says so in words when it happens. A projection that only ever curved upward would be flattering
+nonsense.</p>
+</section>
+
+<section id="languages">
+<h2>6 · German and English</h2>
+<p>Both languages, chosen from a stored preference, the browser's list, or a <code>?lang=</code>
+link. German is the fallback — the figures and the documents they are checked against are
+German.</p>
+<div class="grid two">
+  <figure><img src="screens/01-payslip.png" alt="The page in English."><figcaption>English —
+  <code>?lang=en</code></figcaption></figure>
+  <figure><img src="screens/02-payslip-de.png" alt="The same page in German."><figcaption>Deutsch
+  — <code>?lang=de</code></figcaption></figure>
+</div>
+<p>Look at the two result tables: they are <strong>identical</strong>. Only the chrome and the
+explanations change. That is the design — a statutory term has one name, and it is the one on
+the form.</p>
+<figure class="narrow"><img src="screens/06-narrow.png" alt="The page at a narrow viewport,
+485 pixels wide, with the form collapsed to fewer columns and everything still fitting.">
+<figcaption>Narrow viewport. Below this width the form collapses to a single column; the tables
+scroll inside their own box rather than pushing the page sideways.</figcaption></figure>
+</section>
+
+<section id="cli">
+<h2>7 · The command line</h2>
+<p>Five forms. Everything below is real output.</p>
+
+<h3>7.1 · A payslip</h3>
+<p>The same household as the browser screenshot — compare the figures.</p>
+<pre>$ casivell --gross 5500 --class 1 --state NW
+
+Casivell — Lohnabrechnung
+  2026 · Steuerklasse I · NW · monthly
+
+  Bruttoentgelt                                     5.500,00 €
+
+  Steuern
+    Lohnsteuer                                       -921,25 €
+    Solidaritätszuschlag                                0,00 €
+
+  Sozialversicherung (Arbeitnehmeranteil)
+    Rentenversicherung          9,30 %               -511,50 €
+    Arbeitslosenversicherung    1,30 %                -71,50 €
+    Krankenversicherung         8,75 %               -481,25 €
+    Pflegeversicherung          2,40 %               -132,00 €
+    Summe                                          -1.196,25 €
+
+  ────────────────────────────────────────────────────────────
+  Nettoentgelt                                      3.382,50 €
+  (61,50 % of gross)
+</pre>
+<p>And the working the browser shows in its panel:</p>
+<pre>  Wie die Lohnsteuer ermittelt wurde (§ 39b EStG, BMF-PAP 2026)
+    Jahresarbeitslohn (ZRE4)                       66.000,00 €
+    − Tabellenfreibeträge (ZTABFB)                 -1.266,00 €
+    − Vorsorgepauschale (VSP)                     -13.299,00 €
+    = zu versteuernder Betrag (ZVE)                51.435,00 €
+    Jahreslohnsteuer (LSTJAHR)                     11.055,00 €
+    ÷ 12 = Lohnsteuer im Monat                        921,25 €
+</pre>
+
+<h3>7.2 · The annual assessment</h3>
+<p>The § 2 EStG chain, stage by stage — this is the view for reconciling a Steuerbescheid.
+Note the margin notes: which Pauschbetrag applied, where a cap bound.</p>
+<pre>$ casivell assess --gross 5000 --class 1 --children 1 --capital 3000 --medical 4000 --disability 50
+
+Casivell — Jahresveranlagung 2026
+  Estimated, not a Steuerbescheid. See the notes.
+
+  Zu versteuerndes Einkommen (§ 2 EStG)
+    Bruttoarbeitslohn                               60.000,00  
+    − Werbungskosten (§ 9, § 9a)                     1.230,00  Pauschbetrag
+    = Einkünfte (§ 19)                              58.770,00  
+    = Gesamtbetrag der Einkünfte                    58.770,00  
+    − Altersvorsorge (§ 10 Abs. 1 Nr. 2)             5.580,00  
+    − Sonstige Vorsorge (§ 10 Abs. 1 Nr. 3)          6.154,80  Satz 4 override
+    − Übrige Sonderausgaben (§§ 10–10c)                 36,00  Pauschbetrag
+    − Außergewöhnliche Belastungen (§§ 33, 33b)      3.453,90  
+      4.000,00 € of costs less the 1.686,10 € zumutbare Belastung (§ 33 Abs. 3)
+      including a 1.140,00 € Behinderten-Pauschbetrag, not reduced by the threshold
+    = Einkommen                                     43.545,30  
+
+  Steuer
+    zu versteuerndes Einkommen                      43.545,30  
+    Einkommensteuer (§ 32a)                          8.353,00  
+    Solidaritätszuschlag                                 0,00  
+    Kirchensteuer                                        0,00  
+    = Gesamtbelastung                                8.353,00  
+
+  Kinder (§ 31 Günstigerprüfung)
+    The Kindergeld of 3.108,00 € wins; the Kinderfreibetrag is not granted.
+
+  Abrechnung
+    Lohnsteuer einbehalten                           9.510,96  
+    Erstattung                                       1.157,96  back
+</pre>
+
+<p>Capital income is reported separately, because § 32d taxes it outside the tariff — and the
+Abs. 6 election is something a taxpayer must actually claim on the return:</p>
+<pre>  Kapitalerträge (§ 32d EStG)
+    Gross 3.000,00 €, less 1.000,00 € Sparer-Pauschbetrag, leaves 2.000,00 € taxable.
+    Taxed at the flat 25 % (Abs. 1); electing the tariff would cost more.
+    Tax 500,00 €, Soli 0,00 €, Kirchensteuer 0,00 €, total 500,00 €.
+</pre>
+
+<h3>7.3 · Tax classes</h3>
+<pre>$ casivell classes --gross 5000 --partner 1800
+
+Casivell — Steuerklassenvergleich 2026
+  Two salaries: 5.000,00 € and 1.800,00 € a month
+
+  The annual income tax is 9.180,00 € under all three. The tax class decides
+  when it is paid and by which spouse — not how much.
+
+  Arrangement          Higher/mo   Lower/mo     Net/mo     At assessment
+  ──────────────────────────────────────────────────────────────────────
+  IV / IV                782,41      52,41   4.486,18     837,84 € back
+  III / V                401,83     230,91   4.688,26   1.587,12 € owed
+  IV + Faktor 0,916      716,66      48,00   4.556,34       4,08 € owed
+</pre>
+
+<h3>7.4 · Buying a home</h3>
+<p>Grunderwerbsteuer is the state's own rate and exact; the notary line is labelled
+<em>estimated</em> because the GNotKG fee schedule is not implemented.</p>
+<pre>$ casivell property --price 400000 --state NW --deposit 80000 --agent 3,57
+
+Casivell — Immobilienkauf 2026
+  400.000,00 € in NordrheinWestfalen
+
+  Kaufnebenkosten
+    Grunderwerbsteuer (6,50 %)            26.000,00 €  statutory
+    Notar und Grundbuch                    8.000,00 €  estimated
+    Maklerprovision                       14.280,00 €  contractual
+    = Nebenkosten (12,07 %)               48.280,00 €
+    = Gesamtaufwand                      448.280,00 €
+
+  Finanzierung
+    Eigenkapital                          80.000,00 €  20,00 % of the price
+    Darlehen                             368.280,00 €
+    Monatliche Rate                        1.687,95 €
+    Laufzeit                                  29 J  0 M
+    Zinsen insgesamt                     218.013,77 €
+
+    After the 10-year Zinsbindung:
+      Restschuld                         280.241,25 €  to refinance
+      Zinsen bis dahin                   114.515,25 €</pre>
+
+<h3>7.5 · Statutory parameters for a year</h3>
+<pre>$ casivell law --year 2026
+
+Casivell — Rechengrößen 2026
+  ENACTED LAW — transcribed from primary sources.
+
+  Einkommensteuertarif (§ 32a EStG)
+    Grundfreibetrag                          12.348,00 €
+    Ende Zone 2                              17.799,00 €
+    Beginn 42 % (Spitzensteuersatz)          69.879,00 €
+    Beginn 45 % (Reichensteuer)             277.826,00 €
+
+  Sozialversicherung
+    BBG Renten-/Arbeitslosenvers. (Monat)     8.450,00 €
+    BBG Kranken-/Pflegevers. (Monat)          5.812,50 €
+    Durchschnittsentgelt (Jahr)              51.944,00 €
+    Bezugsgröße (Monat)                       3.955,00 €</pre>
+
+<h3>7.6 · A projection with life events</h3>
+<p>A birth, fourteen months of parental leave, and the tax that follows a year later.</p>
+<pre>$ casivell project --gross 4000 --class 1 --children 1 --expenses 1800 --child-born 2 --parental-leave 2:14 --years 8
+
+Casivell — Haushaltsprojektion
+  8 years from 2026 · nominal (euro of the day)
+  Assumptions: 2,00 % prices, 2,80 % wages, 0,00 % investment return, 0,00 % pay growth
+
+  Life events
+  · 2028: a child is born; Kindererziehungszeit follows (§ 56 SGB VI)
+  · 2028 to 2029: parental leave, Basiselterngeld for 14 months
+
+  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo
+  ───────────────────────────────────────────────────────────────────────────────────────────────────
+  2026   4.000,00    2.622,17        0,00     822,17       0,00      9.866,04      0,92        39,29
+  ┈┈┈┈┈┈┈┈  enacted law ends here; rows below are projected
+  2027   4.000,00    2.631,25        0,00     795,25       0,96     19.410,00      1,82        79,68
+  2028       0,00        0,00    1.650,73    -221,99       1,00     16.747,12      2,74       123,07
+  2029   4.000,00    2.649,42    1.650,73     739,25       0,00     23.620,74      4,45       205,44
+  2030   4.000,00    2.658,50        0,00     710,13     411,80     32.554,10      6,27       297,92
+  2031   4.000,00    2.667,67        0,00     680,33       1,00     40.719,06      7,16       349,62
+  2032   4.000,00    2.676,84        0,00     649,75       0,96     48.517,02      7,95       398,72
+  2033   4.000,00    2.686,09        0,00     618,46       0,92     55.939,46      8,71       449,22
+</pre>
+</section>
+
+<section id="scenarios">
+<h2>8 · Scenarios: saving, replaying, comparing</h2>
+<p>A saved scenario records <em>the invocation</em> and <em>the fingerprint of the statutory
+data</em> it was computed against — not a serialised struct, which would drift as the software
+grew.</p>
+<pre>$ cat rent.casivell
+# Casivell scenario
+# Replay with: casivell replay &lt;this file&gt;. Editable by hand.
+schema = 1
+
+[invocation]
+form = project
+arg = --gross
+arg = 6000
+arg = --class
+arg = 1
+arg = --expenses
+arg = 1500
+arg = --return
+arg = 5,0
+arg = --years
+arg = 25
+
+[law]
+year = 2026
+fingerprint = e177cfbaa6bb7121</pre>
+<p>Replaying re-runs it and checks the law has not moved underneath:</p>
+<pre>$ casivell replay rent.casivell
+  … the projection is re-run and printed in full, then:
+
+  Replayed against unchanged 2026 law (e177cfbaa6bb7121).</pre>
+<p>If the statutory data <em>has</em> moved, the figures are still computed — but the warning
+comes <strong>first</strong>, because a caveat printed under several screens of numbers is one
+nobody reads:</p>
+<pre>$ casivell replay stale.casivell     # a scenario saved under different data
+
+
+  ⚠ The statutory data for 2026 has changed since this scenario was saved
+  (saved aaaaaaaaaaaaaaaa, now e177cfbaa6bb7121). The figures below are computed from the current data,
+  so they will not match what was saved. This is the law being corrected or
+  updated, not an error.</pre>
+<p>And two scenarios can be compared. Here, renting against buying over twenty-five years:</p>
+<pre>$ casivell compare rent.casivell buy.casivell
+
+Casivell — Szenarienvergleich
+  A  rent.casivell
+  B  buy.casivell
+
+  Was sich unterscheidet
+    only B:  --property-growth 2,0 --buy 3:400000:100000:NW:900
+
+  Ergebnis nach 25 Jahren                     A               B           B − A
+  ──────────────────────────────────────────────────────────────────────────────
+  Nettovermögen                   1.151.341,41    1.022.423,82     -128.917,59
+  Geldvermögen                    1.151.341,41      514.627,31     -636.714,10
+  Tiefster Stand                      2.141,58      -16.322,88      -18.464,46
+  Steuern einbehalten               270.597,96      270.597,96            0,00
+  Erstattungen                           48,00           48,00            0,00
+  Sozialabgaben                     391.198,92      391.198,92            0,00
+  Elterngeld                              0,00            0,00            0,00
+  Hypothekenzinsen                        0,00      183.252,66      183.252,66
+  Entgeltpunkte                          25,37           25,37            0,00
+</pre>
+<p class="note"><strong>Read the identical rows.</strong> Tax, contributions and Entgeltpunkte
+come out the same to the cent — the check that the difference is the housing decision and
+nothing else. And the buyer's lowest point is <em>below zero</em>: a plan that passed through
+insolvency, which an end state alone would have hidden.</p>
+</section>
+
+<section id="trust">
+<h2>9 · Why you might trust a figure</h2>
+<div class="grid two">
+  <div class="card"><h3>516 official values</h3><p>Payroll withholding is checked against the
+  BMF's own Prüftabellen — the reference tables German payroll products are validated
+  against.</p></div>
+  <div class="card"><h3>Two statutes agreeing</h3><p>Withholding is designed to be right for a
+  flat year. It is: the § 39b path and the § 2 annual assessment land within
+  <strong>96–332 cents</strong> of each other across a sixfold salary range, computed by
+  different code from different statutes.</p></div>
+  <div class="card"><h3>Derived, not transcribed</h3><p>Projected tariff coefficients are
+  derived from the Eckwerte, and the derivation reproduces all eight published coefficients for
+  both enacted years exactly.</p></div>
+  <div class="card"><h3>A Datenstand on every page</h3><p>Each year's statutory data has a
+  fingerprint. Quote it beside a figure and anyone can confirm they are looking at the same
+  law.</p></div>
+</div>
+<p>Where no reference exists — § 10 Vorsorgeaufwendungen, the § 39f Faktorverfahren,
+Elterngeld — that is <strong>stated in the code and in the documentation</strong>, and the
+verification is built from what is available instead.</p>
+</section>
+
+<section id="limits">
+<h2>10 · What it will not do</h2>
+<p>The full account is <code>docs/LIMITATIONS.md</code>. The three that matter most:</p>
+<ol class="limits">
+  <li><strong>A second earner is not modelled.</strong> If both spouses work, the annual
+  assessment is refused outright rather than computed on half a household — a refusal beats a
+  confident wrong answer.</li>
+  <li><strong>Only employment and capital income.</strong> Five of the seven § 2 Abs. 1
+  categories are absent: business, self-employment, rental, agriculture, and pensions in
+  payment.</li>
+  <li><strong>Nothing has been reconciled against a real Steuerbescheid.</strong> The internal
+  evidence is strong; it is not the same thing.</li>
+</ol>
+<p class="warn">Casivell is a calculator, not advice within the meaning of §§ 1–4 StBerG. Figures
+are estimates for planning. Where a real filing or a real decision is at stake, a Steuerberater
+is the answer.</p>
+</section>
+
+<footer>
+<p>Generated from a working build. 654 Rust tests, 6 service-worker tests, 9 string tests; every
+screenshot captured from the running page, every terminal block pasted unedited.</p>
+</footer>
+</body>
+</html>

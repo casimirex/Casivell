@@ -1,0 +1,4 @@
+$ casivell replay rent.casivell
+  … the projection is re-run and printed in full, then:
+
+  Replayed against unchanged 2026 law (e177cfbaa6bb7121).

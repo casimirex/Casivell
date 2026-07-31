@@ -1,0 +1,33 @@
+$ casivell law --year 2026
+
+Casivell — Rechengrößen 2026
+  ENACTED LAW — transcribed from primary sources.
+
+  Einkommensteuertarif (§ 32a EStG)
+    Grundfreibetrag                          12.348,00 €
+    Ende Zone 2                              17.799,00 €
+    Beginn 42 % (Spitzensteuersatz)          69.879,00 €
+    Beginn 45 % (Reichensteuer)             277.826,00 €
+
+  Sozialversicherung
+    BBG Renten-/Arbeitslosenvers. (Monat)     8.450,00 €
+    BBG Kranken-/Pflegevers. (Monat)          5.812,50 €
+    Durchschnittsentgelt (Jahr)              51.944,00 €
+    Bezugsgröße (Monat)                       3.955,00 €
+    Aktueller Rentenwert (ab Juli)               42,52 €
+    Beitragssatz Rentenvers.                   18,60 %
+    Beitragssatz Krankenvers.                  14,60 %
+    Beitragssatz Pflegevers.                    3,60 %
+
+  Zuschläge
+    SolZ-Freigrenze (Einzelveranlagung)      20.350,00 €
+    SolZ-Satz                                   5,50 %
+    Kirchensteuer (BW, BY)                      8,00 %
+    Kirchensteuer (übrige)                      9,00 %
+
+  Rechtsgrundlage
+  · § 32a Abs. 1 EStG, Fassung ab VZ 2026 (Art. 2 SteFeG v. 23.12.2024)
+  · § 158 SGB VI, Anlage 1 SGB VI, SVBezGrV 2026, RWBestV 2026
+  · verified 2026-07-30
+  · Datenstand e177cfbaa6bb7121
+
