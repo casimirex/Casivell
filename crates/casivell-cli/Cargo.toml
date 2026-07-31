@@ -18,6 +18,7 @@ casivell-income = { path = "../casivell-income" }
 casivell-lawdata = { path = "../casivell-lawdata" }
 casivell-payroll = { path = "../casivell-payroll" }
 casivell-projection = { path = "../casivell-projection" }
+casivell-property = { path = "../casivell-property" }
 casivell-sim = { path = "../casivell-sim" }
 casivell-social = { path = "../casivell-social" }
 casivell-tax = { path = "../casivell-tax" }

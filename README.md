@@ -45,6 +45,7 @@ crates/
 ├── casivell-income/    § 2 EStG: gross → taxable income, the assessment, § 32d capital
 ├── casivell-social/    Social insurance contributions, pension entitlement
 ├── casivell-benefits/  Elterngeld (BEEG) — above payroll, because § 2e uses the PAP
+├── casivell-property/  Grunderwerbsteuer, Kaufnebenkosten, the annuity mortgage
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
 ├── casivell-sim/       Month-by-month household projection, streaming
@@ -166,7 +167,7 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 567 tests
+cargo test --workspace                                        # 592 tests
 cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
 python3 scripts/check_no_statutory_literals.py                # rule D2

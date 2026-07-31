@@ -409,6 +409,38 @@ near 2026 would have passed.
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
 
+### Phase 6+ — Buying a home · *half done, and the half matters*
+
+`casivell-property` prices the transaction and amortises the loan. It deliberately stops
+before answering "should I buy", and the boundary is the point of the design:
+
+- **Exact and statutory.** Grunderwerbsteuer, from each Land's own Act. All sixteen rates
+  transcribed and cross-checked against two independent published tables that agreed — which
+  mattered: the rates change one state at a time and stale figures circulate for years. Sachsen
+  has been 5,5 % since 2023 and the first source consulted still said 3,5 %.
+- **Exact but not statutory.** The annuity mortgage, computed to the cent from stated contract
+  terms.
+- **Neither.** House price growth, rent growth, maintenance, what it sells for later. A
+  buy-versus-rent verdict is dominated by these, and no care taken over the first two makes the
+  third reliable.
+
+**Three numbers worth having.** On a 400 000 € house in Nordrhein-Westfalen with 80 000 € down:
+
+- The **Nebenkosten are 48 280 €** — 12 % of the price with an agent — and they buy nothing a
+  bank lends against. A nominal 20 % deposit finances 92 % of the price, which is a different
+  mortgage at a different rate.
+- **2 % Tilgung clears in 29 years, not the fifty** a naive `100 / 2` suggests, because the
+  repayment portion grows as the interest portion shrinks. One point more takes it to 22 years
+  and saves 61 585 € of interest.
+- After a ten-year Zinsbindung the **Restschuld is 280 241 €** — a decade of payments retired
+  under a quarter of the debt, and more than half of everything paid went to interest. That
+  figure has to be refinanced at whatever rates then are, and it is the number households most
+  need and least often see.
+
+**Still to do:** an `Event::PropertyPurchase` in the kernel, swapping rent for the mortgage
+payment so the buy-versus-rent comparison runs through the same verified projection as
+everything else — with its assumptions printed beside it, as every other projection's are.
+
 ### Phase 2+ — Außergewöhnliche Belastungen ✅ *complete*
 
 **The roadmap said this was blocked because "the data to test it is not available". That was

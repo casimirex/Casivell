@@ -99,6 +99,33 @@ pub enum Bundesland {
 }
 
 impl Bundesland {
+    /// This state's position in [`Self::ALL`].
+    ///
+    /// For tables stored as a fixed array in the same order — the Grunderwerbsteuer rates are
+    /// one. Written as a match rather than derived, so adding a state to the enum forces the
+    /// position to be stated rather than silently shifting every later one.
+    #[must_use]
+    pub const fn index(self) -> usize {
+        match self {
+            Self::BadenWuerttemberg => 0,
+            Self::Bayern => 1,
+            Self::Berlin => 2,
+            Self::Brandenburg => 3,
+            Self::Bremen => 4,
+            Self::Hamburg => 5,
+            Self::Hessen => 6,
+            Self::MecklenburgVorpommern => 7,
+            Self::Niedersachsen => 8,
+            Self::NordrheinWestfalen => 9,
+            Self::RheinlandPfalz => 10,
+            Self::Saarland => 11,
+            Self::Sachsen => 12,
+            Self::SachsenAnhalt => 13,
+            Self::SchleswigHolstein => 14,
+            Self::Thueringen => 15,
+        }
+    }
+
     /// Every state, for exhaustive iteration in tests and UI pickers.
     pub const ALL: [Self; 16] = [
         Self::BadenWuerttemberg,

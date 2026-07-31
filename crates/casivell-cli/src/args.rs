@@ -600,6 +600,81 @@ where
     })
 }
 
+/// A request to price a property purchase.
+pub(crate) struct PropertyRequest {
+    /// The agreed price.
+    pub(crate) price: Money,
+    /// Where the property is, which decides the Grunderwerbsteuer.
+    pub(crate) land: Bundesland,
+    /// The buyer's own money.
+    pub(crate) deposit: Money,
+    /// The buyer's share of any Maklerprovision.
+    pub(crate) agent_rate: Rate,
+    /// The Sollzins.
+    pub(crate) interest_rate: Rate,
+    /// The anfängliche Tilgung.
+    pub(crate) repayment_rate: Rate,
+    /// The Zinsbindung in years.
+    pub(crate) fixed_years: u32,
+    /// The year, for the statutory rates.
+    pub(crate) year: u16,
+}
+
+/// Parses a percentage into a [`Rate`], refusing one outside `0..=100`.
+fn parse_rate<I>(flag: &str, iter: &mut I) -> Result<Rate, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let millis = parse_percent_millis(flag, iter)?;
+    Rate::from_percent_millis(millis).map_err(|_| ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: millis.to_string(),
+        expected: "a percentage between 0 and 100".to_owned(),
+    })
+}
+
+/// Parses the `property` form.
+///
+/// # Errors
+///
+/// [`ArgError`] on an unusable argument, including a missing `--price`.
+pub(crate) fn parse_property(args: Vec<String>) -> Result<PropertyRequest, ArgError> {
+    let mut price = None;
+    let mut land = Bundesland::NordrheinWestfalen;
+    let mut deposit = Money::ZERO;
+    let mut agent = Rate::ZERO;
+    let mut interest = Rate::from_percent_millis(3_500).unwrap_or(Rate::ZERO);
+    let mut repayment = Rate::from_percent_millis(2_000).unwrap_or(Rate::ZERO);
+    let mut fixed_years = 10_u32;
+    let mut year = DEFAULT_YEAR;
+
+    let mut iter = args.into_iter();
+    while let Some(flag) = iter.next() {
+        match flag.as_str() {
+            "--price" => price = Some(parse_money(&flag, &mut iter)?),
+            "--state" => land = parse_land(&flag, &mut iter)?,
+            "--deposit" => deposit = parse_money(&flag, &mut iter)?,
+            "--agent" => agent = parse_rate(&flag, &mut iter)?,
+            "--rate" => interest = parse_rate(&flag, &mut iter)?,
+            "--tilgung" => repayment = parse_rate(&flag, &mut iter)?,
+            "--fixed" => fixed_years = u32::from(parse_u16(&flag, &mut iter)?),
+            "--year" => year = parse_u16(&flag, &mut iter)?,
+            other => return Err(ArgError::Unknown(other.to_owned())),
+        }
+    }
+
+    Ok(PropertyRequest {
+        price: price.ok_or_else(|| ArgError::Required("--price".to_owned()))?,
+        land,
+        deposit,
+        agent_rate: agent,
+        interest_rate: interest,
+        repayment_rate: repayment,
+        fixed_years,
+        year,
+    })
+}
+
 /// A request for an annual assessment.
 pub(crate) struct AssessRequest {
     /// The household description.

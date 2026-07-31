@@ -57,6 +57,7 @@ pub mod deductions;
 pub mod extraordinary;
 pub mod income_tax;
 pub mod payroll;
+pub mod property;
 pub mod provenance;
 pub mod retirement;
 pub mod social;
@@ -67,6 +68,7 @@ pub use deductions::DeductionParameters;
 pub use extraordinary::{BurdenRates, BurdenRow, ExtraordinaryBurdenParameters};
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use payroll::{PayrollParameters, TaxClass};
+pub use property::PropertyCostParameters;
 pub use provenance::{DataStatus, Provenance};
 pub use retirement::{MONTHS_PER_YEAR, RetirementParameters, retirement_age_months};
 pub use social::{

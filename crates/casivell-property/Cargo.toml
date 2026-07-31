@@ -1,0 +1,15 @@
+[package]
+name = "casivell-property"
+version = "0.1.0"
+description = "Buying a home: Kaufnebenkosten and the annuity mortgage. Statutory costs and exact arithmetic, kept apart from the assumptions."
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+casivell-core = { path = "../casivell-core" }
+casivell-lawdata = { path = "../casivell-lawdata" }
+
+[lints]
+workspace = true

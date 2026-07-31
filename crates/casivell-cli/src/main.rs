@@ -37,6 +37,7 @@ mod classes_report;
 mod format;
 mod law_report;
 mod project_report;
+mod property_report;
 mod report;
 
 use std::process::ExitCode;
@@ -45,9 +46,11 @@ use casivell_core::{Money, TaxYear};
 use casivell_income::{
     AssessmentLaw, Contributions, Employee, assess, capital_income_tax, taxable_income,
 };
+use casivell_lawdata::PropertyCostParameters;
 use casivell_lawdata::{DeductionParameters, ExtraordinaryBurdenParameters, SocialParameters};
 use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
+use casivell_property::{MortgageTerms, amortise, purchase_costs};
 use casivell_sim::{Household, SimulationConfig, simulate};
 use casivell_social::Insured;
 use casivell_tax::FilingStatus;
@@ -98,6 +101,15 @@ PROJECT OPTIONS
       --inflation <p>     Annual price inflation (default 2,0)
       --wage-growth <p>   Annual wage growth (default 2,8)
 
+PROPERTY OPTIONS
+      --price <amount>    Purchase price (required)
+      --state <code>      Where the property is, for the Grunderwerbsteuer
+      --deposit <amount>  The buyer's own money
+      --agent <p>         Buyer's share of any Maklerprovision (default 0,0)
+      --rate <p>          Sollzins (default 3,5)
+      --tilgung <p>       Anfängliche Tilgung (default 2,0)
+      --fixed <years>     Zinsbindung in years (default 10)
+
 ASSESS OPTIONS
       --work-expenses <a> Actual Werbungskosten, if above the Pauschbetrag
       --donations <a>     Other Sonderausgaben (§§ 10–10b)
@@ -118,6 +130,7 @@ LAW OPTIONS
 EXAMPLES
   casivell --gross 4500 --class 1
   casivell assess --gross 5000 --class 1 --children 1 --capital 3000
+  casivell property --price 400000 --state NW --deposit 80000 --rate 3,5
   casivell classes --gross 5000 --partner 1800 --class 4
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
@@ -146,6 +159,7 @@ fn main() -> ExitCode {
     let outcome = match argv.first().map(String::as_str) {
         Some("assess") => run_assess(argv.into_iter().skip(1).collect()),
         Some("classes") => run_classes(argv.into_iter().skip(1).collect()),
+        Some("property") => run_property(argv.into_iter().skip(1).collect()),
         Some("law") => run_law(argv.into_iter().skip(1).collect()),
         Some("project") => run_project(argv.into_iter().skip(1).collect()),
         _ => run(argv),
@@ -310,6 +324,52 @@ fn run_assess(argv: Vec<String>) -> Result<String, String> {
         capital,
         benefits: request.benefits,
     })
+    .map_err(|e| e.to_string())
+}
+
+/// Prices a property purchase and its mortgage.
+fn run_property(argv: Vec<String>) -> Result<String, String> {
+    let request = args::parse_property(argv).map_err(|e| e.to_string())?;
+
+    let year = TaxYear::new(request.year).map_err(|_| {
+        format!(
+            "{} is outside the representable range {}–{}.",
+            request.year,
+            TaxYear::FIRST_VERIFIED.get(),
+            TaxYear::LAST_REPRESENTABLE.get(),
+        )
+    })?;
+    let costs_law = PropertyCostParameters::for_year(year)
+        .map_err(|_| format!("no enacted property cost parameters for {}.", request.year))?;
+
+    let costs = purchase_costs(
+        request.price,
+        request.land,
+        request.deposit,
+        request.agent_rate,
+        &costs_law,
+    )
+    .map_err(|e| e.to_string())?;
+
+    let loan = amortise(&MortgageTerms {
+        principal: costs.loan_required,
+        interest_rate: request.interest_rate,
+        initial_repayment_rate: request.repayment_rate,
+        fixed_years: request.fixed_years,
+    })
+    .map_err(|_| {
+        "the monthly payment does not cover the interest, so the loan would never clear. \
+         Raise --tilgung."
+            .to_owned()
+    })?;
+
+    property_report::render(
+        &costs,
+        &loan,
+        request.land,
+        request.fixed_years,
+        request.year,
+    )
     .map_err(|e| e.to_string())
 }
 
