@@ -414,7 +414,20 @@ near 2026 would have passed.
 - [x] **A second form**: the tax-class comparison, whose whole point is that the annual tax
       does not move. Verified against the CLI to the cent, all three arrangements and the
       § 39f factor.
+- [x] **PWA, fully offline** — a service worker, a manifest and an icon. Six tests.
 - [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
+
+**Offline is a hazard for this content, and the caching strategy is written around that.** A
+cached tax calculator answers confidently with the law it was built against and nothing on the
+screen looks wrong. So the worker is *stale-while-revalidate* rather than cache-first: it
+serves the cached build at once, checks for a newer one behind it, and **tells the page instead
+of swapping**. A reader mid-calculation keeps the build they started with, so one table cannot
+show figures from two statutory datasets. The Datenstand in the footer is the second guard.
+
+Reviewing that worker before testing it found two real bugs in it: the fallback chain could
+resolve to `undefined` for a navigation that was neither cached nor reachable, and the cached
+`Response` body was consumed twice — once to serve and once to compare — which would have
+broken the page rather than the check.
 
 **What is not tested automatically, and is said so rather than papered over.** The ABI has
 fourteen Rust tests; the page's *rendering* has none. Checking it needs a headless browser or

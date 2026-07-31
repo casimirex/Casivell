@@ -4,6 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Casivell — Brutto-Netto</title>
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<meta name="theme-color" content="#1a1a1a">
 <style>
   :root { color-scheme: light dark; --line: color-mix(in srgb, currentColor 15%, transparent); }
   body { font: 16px/1.5 system-ui, sans-serif; max-width: 46rem; margin: 0 auto; padding: 2rem 1rem; }
@@ -39,6 +42,9 @@
   th { text-align: left; font-weight: 600; font-size: .85rem; padding: .35rem 0;
        border-bottom: 1px solid var(--line); }
   th:not(:first-child), td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  #update { display: none; margin: 1rem 0 0; padding: .6rem .9rem; border-radius: .3rem;
+            background: color-mix(in srgb, currentColor 10%, transparent); font-size: .85rem; }
+  #update.shown { display: block; }
   footer { margin-top: 2.5rem; font-size: .8rem; opacity: .7; }
   footer p { margin: .4rem 0; }
 </style>
@@ -78,11 +84,18 @@
 
 <div id="out"></div>
 
+<p id="update" role="status">
+  Eine neuere Fassung ist verfügbar — möglicherweise mit geänderten Rechtsständen.
+  <button type="button" id="reload">Neu laden</button>
+</p>
+
 <footer>
   <p><strong>Keine Steuerberatung</strong> (§§ 1–4 StBerG). Vorläufige Werte; der
      Jahresausgleich rechnet ab.</p>
   <p id="basis"></p>
   <p>Was dieser Rechner <em>nicht</em> kann, steht in <code>docs/LIMITATIONS.md</code>.</p>
+  <p>Funktioniert offline. Der Rechtsstand oben gilt dann für die zuletzt geladene Fassung —
+     bei bestehender Verbindung wird auf eine neuere hingewiesen.</p>
 </footer>
 
 <script type="module">
@@ -311,6 +324,24 @@ document.querySelectorAll("nav button").forEach(button => {
 
 document.getElementById("f").addEventListener("input", show);
 show();
+
+// -------------------------------------------------------------------------
+// Offline
+// -------------------------------------------------------------------------
+//
+// The page works without a network once cached. That is a real hazard for a tax calculator —
+// a cached build answers confidently with the law it was built against — so two things guard
+// it: the Datenstand in the footer names the statutory data these figures rest on, and the
+// service worker tells us here when a newer build exists instead of swapping it in silently
+// under a calculation in progress.
+if ("serviceWorker" in navigator) {
+  navigator.serviceWorker.register("sw.js").catch(() => { /* offline use is optional */ });
+  navigator.serviceWorker.addEventListener("message", event => {
+    if (event.data?.type !== "update-available") return;
+    document.getElementById("update").classList.add("shown");
+  });
+}
+document.getElementById("reload").addEventListener("click", () => location.reload());
 </script>
 </body>
 </html>

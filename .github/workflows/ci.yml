@@ -63,6 +63,11 @@ jobs:
       - name: Browser build
         run: cargo build -p casivell-wasm --target wasm32-unknown-unknown --release
 
+      # D6c: the service worker decides what a cached build serves, and a cached tax
+      # calculator that quietly answers with last year's law is the failure this guards.
+      - name: Service worker
+        run: node web/sw.test.mjs
+
       # D7: the scope sections are the honest counterweight to everything else the
       # documentation claims, and they drift. This fails if a crate advertises the absence
       # of something it implements.

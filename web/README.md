@@ -51,15 +51,32 @@ The footer shows the **Datenstand**: the fingerprint of the statutory data the f
 the same digest `casivell law` prints. Two people quoting the same one are looking at the same
 law rather than assuming they are.
 
+## Offline
+
+The page works without a network once loaded, which for a tax calculator is a hazard as much
+as a feature: a cached build answers confidently with the law it was built against, and nothing
+on the screen looks wrong. Two things guard it.
+
+The **Datenstand** in the footer names the statutory data the figures rest on, so a stale
+answer is identifiable rather than merely suspected. And the service worker is
+*stale-while-revalidate* rather than cache-first: it serves the cached build at once, checks
+for a newer one behind it, and **tells the page instead of swapping**. A reader mid-calculation
+keeps the build they started with, so one table cannot show figures from two different
+statutory datasets.
+
+`node web/sw.test.mjs` drives all of that — cold fetch, warm hit, changed build, offline with
+and without a cache, and the install shell — with a fake `Cache` and a switchable network.
+Node has `Response` and `fetch` built in, so it needs no dependencies. CI runs it.
+
 ## What is not tested automatically
 
-The ABI is covered by the Rust tests in `casivell-wasm` — 14 of them, including that the
-§ 39b chain reconciles and that all three tax-class arrangements settle to one liability. The
-page's **rendering** is not. Checking it properly needs a headless browser or `jsdom`, and
-this repository has no external dependencies; a shim thin enough to add without one would
-verify the shim rather than the page.
+The ABI has 14 Rust tests, including that the § 39b chain reconciles and that all three
+tax-class arrangements settle to one liability. The service worker has six. The page's
+**rendering** has none: checking it properly needs a headless browser or `jsdom`, and this
+repository has no external dependencies — a shim thin enough to add without one verifies the
+shim rather than the page. I wrote one, watched it do exactly that, and deleted it.
 
-So the JavaScript is syntax-checked and the ABI it calls is verified against the CLI figure by
+So the JavaScript is syntax-checked, the ABI it calls is verified against the CLI figure by
 figure, and the markup between them is reviewed by reading. That is stated rather than papered
 over — it is the weakest link in this directory.
 
