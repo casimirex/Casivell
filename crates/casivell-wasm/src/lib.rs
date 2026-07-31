@@ -52,7 +52,10 @@ use core::cell::RefCell;
 
 use casivell_core::{Money, Rate, TaxYear};
 use casivell_lawdata::{Bundesland, Fingerprinted as _, LawYear, TaxClass};
-use casivell_payroll::{Employment, HealthCover, NetPay, PayPeriod, PayrollLaw, net_pay};
+use casivell_payroll::{
+    ClassComparison, Employment, HealthCover, NetPay, PayPeriod, PayrollLaw, compare_classes,
+    factor_thousandths, net_pay,
+};
 use casivell_social::Insured;
 
 /// Error codes returned by [`casivell_payslip`]. All negative; success is zero.
@@ -115,9 +118,38 @@ pub mod field {
     pub const COUNT: i32 = 16;
 }
 
+/// Which of the three arrangements a figure belongs to, for [`casivell_class_result`].
+pub mod arrangement {
+    /// Both spouses in class IV.
+    pub const FOUR_FOUR: i32 = 0;
+    /// The higher earner in class III, the lower in class V.
+    pub const THREE_FIVE: i32 = 1;
+    /// Both in class IV with the § 39f factor.
+    pub const FOUR_FACTOR: i32 = 2;
+}
+
+/// Figures available for each arrangement, for [`casivell_class_result`].
+pub mod class_field {
+    /// Monthly withholding from the higher earner.
+    pub const HIGHER: i32 = 0;
+    /// Monthly withholding from the lower earner.
+    pub const LOWER: i32 = 1;
+    /// The two together, monthly.
+    pub const WITHHOLDING: i32 = 2;
+    /// Monthly net reaching the household.
+    pub const NET: i32 = 3;
+    /// Withheld income tax over the year less the joint liability: positive is a refund.
+    pub const SETTLEMENT: i32 = 4;
+    /// One past the last valid index.
+    pub const COUNT: i32 = 5;
+}
+
 thread_local! {
     /// The last successful result, held between the compute call and the reads of it.
     static LAST: RefCell<Option<NetPay>> = const { RefCell::new(None) };
+
+    /// The last successful tax-class comparison, held the same way.
+    static LAST_CLASSES: RefCell<Option<ClassComparison>> = const { RefCell::new(None) };
 }
 
 /// Computes a payslip and stores the result.
@@ -256,6 +288,142 @@ pub extern "C" fn casivell_enacted_years() -> i64 {
     }
 }
 
+/// Compares the three tax-class arrangements open to a married couple.
+///
+/// The two salaries are monthly gross in cents; which is higher does not matter, since III/V
+/// is only sensible with the higher earner in III and this orders them. Returns `0` or one of
+/// the [`error`] codes.
+///
+/// The remaining arguments describe circumstances the couple shares — state, age, children,
+/// church, fund rate — because a comparison holding everything but the class constant is the
+/// only one that isolates the class.
+#[expect(
+    unsafe_code,
+    reason = "the export attribute only; the function body contains no unsafe operation"
+)]
+#[unsafe(no_mangle)]
+pub extern "C" fn casivell_compare_classes(
+    first_cents: i64,
+    second_cents: i64,
+    year: i32,
+    land: i32,
+    age_years: i32,
+    children: i32,
+    is_parent: i32,
+    church: i32,
+    supplementary_rate_ppm: i64,
+) -> i32 {
+    let outcome = compare(
+        first_cents,
+        second_cents,
+        &Inputs {
+            gross_cents: first_cents,
+            period: 0,
+            year,
+            // Any assessable class will do: `compare_classes` sets each arrangement's class
+            // itself, and this one is only a placeholder for building the shared employment.
+            tax_class: 4,
+            land,
+            age_years,
+            children,
+            is_parent: is_parent != 0,
+            church: church != 0,
+            supplementary_rate_ppm,
+        },
+    );
+
+    match outcome {
+        Ok(result) => {
+            LAST_CLASSES.with(|slot| *slot.borrow_mut() = Some(result));
+            0
+        }
+        Err(code) => {
+            LAST_CLASSES.with(|slot| *slot.borrow_mut() = None);
+            code
+        }
+    }
+}
+
+/// Reads one figure from the last successful [`casivell_compare_classes`] call, in cents.
+///
+/// `which` is an [`arrangement`] and `what` a [`class_field`]. Returns [`error::FIELD`] where
+/// either is unknown or no comparison has succeeded.
+#[expect(
+    unsafe_code,
+    reason = "the export attribute only; the function body contains no unsafe operation"
+)]
+#[unsafe(no_mangle)]
+pub extern "C" fn casivell_class_result(which: i32, what: i32) -> i64 {
+    LAST_CLASSES.with(|slot| match slot.borrow().as_ref() {
+        Some(comparison) => read_class(comparison, which, what),
+        None => i64::from(error::FIELD),
+    })
+}
+
+/// The joint annual income tax — identical under all three arrangements, which is the point.
+///
+/// Returns [`error::FIELD`] where no comparison has succeeded.
+#[expect(
+    unsafe_code,
+    reason = "the export attribute only; the function body contains no unsafe operation"
+)]
+#[unsafe(no_mangle)]
+pub extern "C" fn casivell_class_liability() -> i64 {
+    LAST_CLASSES.with(|slot| match slot.borrow().as_ref() {
+        Some(comparison) => comparison.joint_liability.cents(),
+        None => i64::from(error::FIELD),
+    })
+}
+
+/// The § 39f factor in thousandths, or `0` where the procedure does not apply.
+///
+/// Zero is not an error: § 39f Abs. 1 Satz 6 makes the election available only where the
+/// factor comes out below one, so two equal earners simply have none.
+#[expect(
+    unsafe_code,
+    reason = "the export attribute only; the function body contains no unsafe operation"
+)]
+#[unsafe(no_mangle)]
+pub extern "C" fn casivell_class_factor() -> i64 {
+    LAST_CLASSES.with(|slot| {
+        slot.borrow()
+            .as_ref()
+            .and_then(|comparison| comparison.factor)
+            .map_or(0, factor_thousandths)
+    })
+}
+
+/// Builds the shared employment and runs the comparison.
+fn compare(first_cents: i64, second_cents: i64, shared: &Inputs) -> Result<ClassComparison, i32> {
+    let (law, employment) = employment_for(shared)?;
+    let first = Money::from_cents(first_cents).map_err(|_| error::INPUT)?;
+    let second = Money::from_cents(second_cents).map_err(|_| error::INPUT)?;
+    let (higher, lower) = if first >= second {
+        (first, second)
+    } else {
+        (second, first)
+    };
+    compare_classes(higher, lower, &employment, &employment, &law).map_err(|_| error::ARITHMETIC)
+}
+
+/// One figure from a comparison.
+fn read_class(comparison: &ClassComparison, which: i32, what: i32) -> i64 {
+    let arrangement = match which {
+        arrangement::FOUR_FOUR => comparison.four_four,
+        arrangement::THREE_FIVE => comparison.three_five,
+        arrangement::FOUR_FACTOR => comparison.four_with_factor,
+        _ => return i64::from(error::FIELD),
+    };
+    match what {
+        class_field::HIGHER => arrangement.higher_withholding.cents(),
+        class_field::LOWER => arrangement.lower_withholding.cents(),
+        class_field::WITHHOLDING => arrangement.monthly_withholding.cents(),
+        class_field::NET => arrangement.monthly_net.cents(),
+        class_field::SETTLEMENT => arrangement.settlement.cents(),
+        _ => i64::from(error::FIELD),
+    }
+}
+
 /// Everything the payslip calculation needs, before validation.
 struct Inputs {
     gross_cents: i64,
@@ -308,6 +476,42 @@ fn compute(inputs: &Inputs) -> Result<NetPay, i32> {
     let gross = Money::from_cents(inputs.gross_cents).map_err(|_| error::INPUT)?;
 
     net_pay(gross, period, &employment, &law).map_err(|_| error::ARITHMETIC)
+}
+
+/// Validates the shared circumstances and builds the year's law and the employment.
+///
+/// Shared by the payslip and the class comparison, so the two cannot disagree about what an
+/// input means.
+fn employment_for(inputs: &Inputs) -> Result<(PayrollLaw, Employment), i32> {
+    let year = u16::try_from(inputs.year)
+        .ok()
+        .and_then(|value| TaxYear::new(value).ok())
+        .ok_or(error::YEAR)?;
+    let law = PayrollLaw::for_year(year).map_err(|_| error::YEAR)?;
+
+    let class = tax_class(inputs.tax_class)?;
+    let land = *Bundesland::ALL
+        .get(usize::try_from(inputs.land).map_err(|_| error::LAND)?)
+        .ok_or(error::LAND)?;
+
+    let age = u8::try_from(inputs.age_years).map_err(|_| error::INPUT)?;
+    let children = u8::try_from(inputs.children).map_err(|_| error::INPUT)?;
+    let supplementary = Rate::from_ppm(inputs.supplementary_rate_ppm).map_err(|_| error::INPUT)?;
+
+    let insured = Insured::new(age, inputs.is_parent, children, land, Some(supplementary))
+        .map_err(|_| error::INPUT)?;
+    let employment = Employment::new(
+        insured,
+        class,
+        u16::from(children).saturating_mul(10),
+        HealthCover::Statutory {
+            supplementary_rate: supplementary,
+        },
+        inputs.church.then_some(land),
+    )
+    .map_err(|_| error::INPUT)?;
+
+    Ok((law, employment))
 }
 
 /// The tax class an index names.
@@ -572,6 +776,133 @@ mod tests {
 
         // A year with no enacted data has no fingerprint to report.
         assert_eq!(casivell_fingerprint(1999), 0);
+    }
+
+    /// The comparison's central claim, asserted at the boundary as well as in the engine:
+    /// the annual tax is the same under all three arrangements.
+    ///
+    /// Each one's withheld income tax less its settlement must come back to the same joint
+    /// liability. If a figure were misrouted across the ABI — an arrangement's fields read
+    /// from the wrong struct — this is what would catch it.
+    #[test]
+    fn the_arrangements_all_settle_to_one_liability() {
+        use super::{arrangement, casivell_class_liability, casivell_class_result, class_field};
+
+        assert_eq!(
+            super::casivell_compare_classes(500_000, 180_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        let liability = casivell_class_liability();
+        assert!(liability > 0);
+
+        for which in [
+            arrangement::FOUR_FOUR,
+            arrangement::THREE_FIVE,
+            arrangement::FOUR_FACTOR,
+        ] {
+            let withheld = casivell_class_result(which, class_field::WITHHOLDING);
+            let settlement = casivell_class_result(which, class_field::SETTLEMENT);
+            assert!(withheld > 0, "arrangement {which} withheld nothing");
+            // The two spouses' shares must make up the total.
+            assert_eq!(
+                casivell_class_result(which, class_field::HIGHER)
+                    + casivell_class_result(which, class_field::LOWER),
+                withheld
+            );
+            // And a settlement is only meaningful beside a liability.
+            assert!(settlement.abs() < liability);
+        }
+
+        // III/V takes least each month and owes most at the end; IV/IV is the reverse.
+        assert!(
+            casivell_class_result(arrangement::THREE_FIVE, class_field::WITHHOLDING)
+                < casivell_class_result(arrangement::FOUR_FOUR, class_field::WITHHOLDING)
+        );
+        assert!(casivell_class_result(arrangement::THREE_FIVE, class_field::SETTLEMENT) < 0);
+    }
+
+    /// The factor is reported in thousandths, and its absence is zero rather than an error —
+    /// § 39f simply does not apply to two equal earners.
+    #[test]
+    fn the_factor_is_zero_where_the_procedure_does_not_apply() {
+        use super::{casivell_class_factor, casivell_compare_classes};
+
+        assert_eq!(
+            casivell_compare_classes(500_000, 180_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        let factor = casivell_class_factor();
+        assert!((1..1_000).contains(&factor), "got {factor}");
+
+        assert_eq!(
+            casivell_compare_classes(400_000, 400_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        assert_eq!(casivell_class_factor(), 0, "equal earners need no factor");
+    }
+
+    /// A failed comparison clears the stored result, as a failed payslip does.
+    #[test]
+    fn a_failed_comparison_clears_its_result() {
+        use super::{arrangement, casivell_class_result, casivell_compare_classes, class_field};
+
+        assert_eq!(
+            casivell_compare_classes(500_000, 180_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        assert!(casivell_class_result(arrangement::FOUR_FOUR, class_field::NET) > 0);
+
+        assert_eq!(
+            casivell_compare_classes(500_000, 180_000, 1999, 9, 35, 0, 0, 0, 29_000),
+            error::YEAR
+        );
+        assert_eq!(
+            casivell_class_result(arrangement::FOUR_FOUR, class_field::NET),
+            i64::from(error::FIELD)
+        );
+    }
+
+    /// Unknown arrangement or field indices are errors rather than silent zeros.
+    #[test]
+    fn unknown_class_indices_are_errors() {
+        use super::{arrangement, casivell_class_result, casivell_compare_classes, class_field};
+
+        assert_eq!(
+            casivell_compare_classes(500_000, 180_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        assert_eq!(
+            casivell_class_result(9, class_field::NET),
+            i64::from(error::FIELD)
+        );
+        assert_eq!(
+            casivell_class_result(arrangement::FOUR_FOUR, class_field::COUNT),
+            i64::from(error::FIELD)
+        );
+    }
+
+    /// The order of the two salaries must not matter: III/V is priced with the higher earner
+    /// in III whichever way round they arrive.
+    #[test]
+    fn the_salary_order_does_not_matter() {
+        use super::{arrangement, casivell_class_result, casivell_compare_classes, class_field};
+
+        let read = || {
+            (
+                casivell_class_result(arrangement::THREE_FIVE, class_field::HIGHER),
+                casivell_class_result(arrangement::THREE_FIVE, class_field::LOWER),
+            )
+        };
+        assert_eq!(
+            casivell_compare_classes(500_000, 180_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        let forwards = read();
+        assert_eq!(
+            casivell_compare_classes(180_000, 500_000, 2026, 9, 35, 0, 0, 0, 29_000),
+            0
+        );
+        assert_eq!(read(), forwards);
     }
 
     /// Every tax class and every state must be reachable through the boundary.

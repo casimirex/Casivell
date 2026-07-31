@@ -51,8 +51,21 @@ The footer shows the **Datenstand**: the fingerprint of the statutory data the f
 the same digest `casivell law` prints. Two people quoting the same one are looking at the same
 law rather than assuming they are.
 
+## What is not tested automatically
+
+The ABI is covered by the Rust tests in `casivell-wasm` — 14 of them, including that the
+§ 39b chain reconciles and that all three tax-class arrangements settle to one liability. The
+page's **rendering** is not. Checking it properly needs a headless browser or `jsdom`, and
+this repository has no external dependencies; a shim thin enough to add without one would
+verify the shim rather than the page.
+
+So the JavaScript is syntax-checked and the ABI it calls is verified against the CLI figure by
+figure, and the markup between them is reviewed by reading. That is stated rather than papered
+over — it is the weakest link in this directory.
+
 ## What it computes
 
-The payslip form only — gross to net for one employee. Everything else the engine does is
-reachable through the CLI. `docs/LIMITATIONS.md` is the authoritative account of what is and
+Two forms. **Brutto-Netto**: gross to net for one employee. **Steuerklassen**: the three arrangements
+open to a married couple, and the fact that the annual tax is identical under all of them.
+Everything else the engine does is reachable through the CLI. `docs/LIMITATIONS.md` is the authoritative account of what is and
 is not modelled.

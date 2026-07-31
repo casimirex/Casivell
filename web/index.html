@@ -30,6 +30,15 @@
            font-variant-numeric: tabular-nums; margin: .5rem 0; }
   .chain .rule { grid-column: 1 / -1; border-top: 1px solid var(--line); }
   .error { color: #b00; margin-top: 1.5rem; }
+  nav { display: flex; gap: .25rem; margin-bottom: 1.5rem; }
+  nav button { font: inherit; padding: .4rem .9rem; border: 1px solid var(--line);
+               background: transparent; color: inherit; border-radius: .3rem; cursor: pointer; }
+  nav button[aria-current="true"] { background: currentColor; color: Canvas; }
+  .lede { margin: 1.5rem 0 0; padding: .75rem 1rem; border-left: 3px solid currentColor;
+          background: color-mix(in srgb, currentColor 6%, transparent); font-size: .9rem; }
+  th { text-align: left; font-weight: 600; font-size: .85rem; padding: .35rem 0;
+       border-bottom: 1px solid var(--line); }
+  th:not(:first-child), td.num { text-align: right; font-variant-numeric: tabular-nums; }
   footer { margin-top: 2.5rem; font-size: .8rem; opacity: .7; }
   footer p { margin: .4rem 0; }
 </style>
@@ -38,11 +47,19 @@
 <h1>Casivell</h1>
 <p class="sub">Brutto zu Netto, gerechnet nach dem BMF-Programmablaufplan. Nichts verlässt dieses Gerät.</p>
 
+<nav>
+  <button type="button" data-form="payslip" aria-current="true">Brutto-Netto</button>
+  <button type="button" data-form="classes">Steuerklassen</button>
+</nav>
+
 <form id="f">
-  <label class="full">Bruttolohn (€ / Monat)
+  <label class="full" id="grossRow">Bruttolohn (€ / Monat)
     <input type="number" id="gross" value="5500" min="0" step="1">
   </label>
-  <label>Steuerklasse
+  <label id="partnerRow" hidden>Bruttolohn Partner (€ / Monat)
+    <input type="number" id="partner" value="1800" min="0" step="1">
+  </label>
+  <label id="classRow">Steuerklasse
     <select id="class">
       <option value="1" selected>I</option><option value="2">II</option>
       <option value="3">III</option><option value="4">IV</option>
@@ -73,6 +90,9 @@
 const LAENDER = ["Baden-Württemberg","Bayern","Berlin","Brandenburg","Bremen","Hamburg",
   "Hessen","Mecklenburg-Vorpommern","Niedersachsen","Nordrhein-Westfalen","Rheinland-Pfalz",
   "Saarland","Sachsen","Sachsen-Anhalt","Schleswig-Holstein","Thüringen"];
+
+const ARR = { FOUR_FOUR:0, THREE_FIVE:1, FOUR_FACTOR:2 };
+const CF = { HIGHER:0, LOWER:1, WITHHOLDING:2, NET:3, SETTLEMENT:4 };
 
 const FIELD = { GROSS:0, INCOME_TAX:1, SOLIDARITY:2, CHURCH_TAX:3, CONTRIBUTIONS:4,
                 NET:5, PENSION:6, HEALTH:7, CARE:8, UNEMPLOYMENT:9,
@@ -208,8 +228,89 @@ function render() {
   });
 }
 
-document.getElementById("f").addEventListener("input", render);
-render();
+// -------------------------------------------------------------------------
+// Steuerklassen: the comparison whose whole point is that the total does not move
+// -------------------------------------------------------------------------
+
+function renderClasses() {
+  const children = value("children");
+  const code = wasm.casivell_compare_classes(
+    BigInt(Math.round(value("gross") * 100)), BigInt(Math.round(value("partner") * 100)),
+    value("year"), value("land"), value("age"), children,
+    children > 0 ? 1 : 0, value("church"), BigInt(Math.round(value("kvz") * 10000)));
+
+  const out = document.getElementById("out");
+  if (code !== 0) {
+    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    return;
+  }
+
+  const g = (arr, f) => Number(wasm.casivell_class_result(arr, f));
+  const liability = Number(wasm.casivell_class_liability());
+  const factor = Number(wasm.casivell_class_factor());
+
+  const settlement = cents => cents < 0
+    ? `${euro(-cents)} nachzahlen`
+    : `${euro(cents)} zurück`;
+
+  const row = (label, arr) => `<tr>
+      <td>${label}</td>
+      <td class="num">${euro(g(arr, CF.HIGHER))}</td>
+      <td class="num">${euro(g(arr, CF.LOWER))}</td>
+      <td class="num">${euro(g(arr, CF.NET))}</td>
+      <td class="num">${settlement(g(arr, CF.SETTLEMENT))}</td>
+    </tr>`;
+
+  out.innerHTML = `<p class="lede">Die Jahres-Einkommensteuer beträgt
+      <strong>${euro(liability)}</strong> — bei allen drei Varianten. Die Steuerklasse
+      entscheidet, <em>wann</em> gezahlt wird und von wem, nicht wie viel.</p>
+    <table>
+      <tr><th>Variante</th><th>höher</th><th>niedriger</th><th>Netto ges.</th><th>Veranlagung</th></tr>
+      ${row("IV / IV", ARR.FOUR_FOUR)}
+      ${row("III / V", ARR.THREE_FIVE)}
+      ${row(factor ? `IV + Faktor 0,${String(factor).padStart(3, "0")}` : "IV + Faktor",
+            ARR.FOUR_FACTOR)}
+    </table>
+    ${factor ? "" : `<p class="sub">Der Faktor ist nur unter 1 zulässig (§ 39f Abs. 1).
+       Bei etwa gleichen Gehältern zieht Klasse IV bereits richtig ab, es gibt nichts zu
+       korrigieren.</p>`}
+    <dl class="explain">
+      <dt>Warum die Summe gleich bleibt</dt>
+      <dd>§ 32a Abs. 5 EStG bestimmt die Jahressteuer eines Ehepaares aus dem gemeinsamen
+      Einkommen. Keine Kombination von Klassen ändert daran etwas — der Jahresausgleich
+      holt die Differenz in beide Richtungen zurück.</dd>
+      <dt>Wo die Wahl trotzdem zählt</dt>
+      <dd>Lohnersatzleistungen werden aus dem <em>Netto</em> berechnet: Elterngeld,
+      Arbeitslosen- und Krankengeld fallen in Klasse V spürbar niedriger aus als in
+      Klasse III — bei gleicher Jahressteuer. Vor einer Geburt ist die Klassenwahl
+      deshalb eine echte Entscheidung.</dd>
+    </dl>`;
+}
+
+// -------------------------------------------------------------------------
+
+let currentForm = "payslip";
+
+function show() {
+  const classes = currentForm === "classes";
+  document.getElementById("partnerRow").hidden = !classes;
+  // The tax class is what the comparison varies, so offering it as an input would be
+  // incoherent rather than merely redundant.
+  document.getElementById("classRow").hidden = classes;
+  (classes ? renderClasses : render)();
+}
+
+document.querySelectorAll("nav button").forEach(button => {
+  button.addEventListener("click", () => {
+    currentForm = button.dataset.form;
+    document.querySelectorAll("nav button").forEach(other =>
+      other.setAttribute("aria-current", String(other === button)));
+    show();
+  });
+});
+
+document.getElementById("f").addEventListener("input", show);
+show();
 </script>
 </body>
 </html>

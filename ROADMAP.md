@@ -411,7 +411,17 @@ near 2026 would have passed.
 - [x] **The explainability view.** Every figure in the table names the provision that produced
       it, and the Lohnsteuer line opens the § 39b working in the Programmablaufplan's own
       variable names — the same chain the CLI prints, from the same numbers.
+- [x] **A second form**: the tax-class comparison, whose whole point is that the annual tax
+      does not move. Verified against the CLI to the cent, all three arrangements and the
+      § 39f factor.
 - [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
+
+**What is not tested automatically, and is said so rather than papered over.** The ABI has
+fourteen Rust tests; the page's *rendering* has none. Checking it needs a headless browser or
+`jsdom`, and this repository has no external dependencies — a shim thin enough to add without
+one verifies the shim rather than the page. The JavaScript is syntax-checked, the ABI it calls
+is compared against the CLI figure by figure, and the markup between them is reviewed by
+reading. That is the weakest link in `web/`.
 
 **The convention.** Two calls, because returning a struct across a C ABI needs pointers and
 therefore genuine `unsafe`: `casivell_payslip(...)` computes and stores, returning `0` or a
