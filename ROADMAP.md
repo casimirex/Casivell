@@ -415,7 +415,19 @@ near 2026 would have passed.
       does not move. Verified against the CLI to the cent, all three arrangements and the
       § 39f factor.
 - [x] **PWA, fully offline** — a service worker, a manifest and an icon. Six tests.
+- [x] **WCAG 2.2 AA**, audited and guarded.
 - [ ] The rest of Phase 5 below, which needs a framework and a design this session did not do.
+
+**The audit found a Level A failure.** The explainability panel was opened by a click handler
+on `<tr>` — no keyboard user could reach it at all. It is now a real `<button>` with
+`aria-expanded` and a name. Alongside that: a one-sentence live region rather than silence,
+`aria-pressed` instead of `aria-current` on the view switcher, captions and `scope` on the
+tables, a `:focus-visible` ring, and 44 px controls.
+
+`scripts/check_accessibility.py` turns each finding into an assertion, and was checked against
+the *broken* markup before being trusted — a guard that passes on both the fixed and the
+original version proves nothing. Contrast, focus order and prose still need a human and
+axe-core; that is said in `web/README.md` rather than implied.
 
 **Offline is a hazard for this content, and the caching strategy is written around that.** A
 cached tax calculator answers confidently with the law it was built against and nothing on the

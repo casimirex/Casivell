@@ -68,6 +68,28 @@ statutory datasets.
 and without a cache, and the install shell — with a fake `Cache` and a switchable network.
 Node has `Response` and `fetch` built in, so it needs no dependencies. CI runs it.
 
+## Accessibility
+
+Audited against WCAG 2.2 AA. What the audit found, and what changed:
+
+- **The explainability panel was opened by a click handler on `<tr>`.** No keyboard user could
+  reach it at all — WCAG 2.1.1 Level A, and by some distance the worst defect the page had. It
+  is now a real `<button>` in the first cell, with `aria-expanded` and an accessible name.
+- Results changed with nothing announced. There is now a visually-hidden `role="status"` region
+  that says **one sentence** — the net figure, or the joint liability — rather than re-reading
+  the whole table on every keystroke.
+- The view switcher used `aria-current`, which is for navigation. It uses `aria-pressed`.
+- Tables gained captions and `scope` on every header cell.
+- Custom-styled controls gained a `:focus-visible` ring, and every control is at least 44 px
+  tall — comfortably past WCAG 2.2's 24 × 24 minimum.
+
+`scripts/check_accessibility.py` turns those findings into assertions and CI runs it. It was
+checked against the *broken* markup first: a guard that passes on both the fixed and the
+original version proves nothing.
+
+It cannot check colour contrast, focus order, or whether the prose makes sense — those were
+reviewed by hand, and a full audit still wants axe-core and a real browser.
+
 ## What is not tested automatically
 
 The ABI has 14 Rust tests, including that the § 39b chain reconciles and that all three

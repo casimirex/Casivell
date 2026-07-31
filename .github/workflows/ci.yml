@@ -68,6 +68,12 @@ jobs:
       - name: Service worker
         run: node web/sw.test.mjs
 
+      # D6d: the structural accessibility failures an audit found, as assertions. A click
+      # handler on a non-interactive element is the one that matters most — it locks keyboard
+      # users out entirely, and it is easy to reintroduce.
+      - name: Accessibility
+        run: python3 scripts/check_accessibility.py
+
       # D7: the scope sections are the honest counterweight to everything else the
       # documentation claims, and they drift. This fails if a crate advertises the absence
       # of something it implements.

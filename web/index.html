@@ -21,9 +21,20 @@
   td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
   tr.total td { font-weight: 600; border-bottom: 2px solid currentColor; }
   tr.sub td { opacity: .65; font-size: .85rem; padding-left: 1.5rem; }
-  tr.why { cursor: pointer; }
-  tr.why td:first-child::after { content: " ?"; opacity: .45; font-size: .8em; }
-  tr.why:hover td:first-child { text-decoration: underline dotted; }
+  /* The explainability control is a real button: reachable by keyboard, named for a screen
+     reader, and carrying its own expanded state. It was a click handler on the row, which no
+     keyboard user could reach at all. */
+  td button.why { font: inherit; background: none; border: 0; padding: .35rem .25rem .35rem 0;
+                  color: inherit; cursor: pointer; text-align: left; min-height: 44px;
+                  display: flex; align-items: center; gap: .4rem; }
+  td button.why:hover { text-decoration: underline dotted; }
+  td button.why .mark { border: 1px solid currentColor; border-radius: 50%; width: 1.15em;
+                        height: 1.15em; display: grid; place-items: center; font-size: .7em;
+                        opacity: .6; flex: none; }
+  :is(button, input, select, a):focus-visible { outline: 3px solid currentColor;
+                                                outline-offset: 2px; }
+  .vh { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0;
+        overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .explain { margin: 0; padding: .75rem 1rem; background: color-mix(in srgb, currentColor 6%, transparent);
              border-left: 3px solid currentColor; font-size: .85rem; }
   .explain dt { font-weight: 600; margin-top: .5rem; }
@@ -34,9 +45,11 @@
   .chain .rule { grid-column: 1 / -1; border-top: 1px solid var(--line); }
   .error { color: #b00; margin-top: 1.5rem; }
   nav { display: flex; gap: .25rem; margin-bottom: 1.5rem; }
-  nav button { font: inherit; padding: .4rem .9rem; border: 1px solid var(--line);
-               background: transparent; color: inherit; border-radius: .3rem; cursor: pointer; }
-  nav button[aria-current="true"] { background: currentColor; color: Canvas; }
+  /* 44px tall: WCAG 2.2's 24×24 minimum with room to spare. */
+  nav button { font: inherit; padding: .6rem 1rem; border: 1px solid var(--line);
+               background: transparent; color: inherit; border-radius: .3rem; cursor: pointer;
+               min-height: 44px; }
+  nav button[aria-pressed="true"] { background: currentColor; color: Canvas; }
   .lede { margin: 1.5rem 0 0; padding: .75rem 1rem; border-left: 3px solid currentColor;
           background: color-mix(in srgb, currentColor 6%, transparent); font-size: .9rem; }
   th { text-align: left; font-weight: 600; font-size: .85rem; padding: .35rem 0;
@@ -53,9 +66,9 @@
 <h1>Casivell</h1>
 <p class="sub">Brutto zu Netto, gerechnet nach dem BMF-Programmablaufplan. Nichts verlässt dieses Gerät.</p>
 
-<nav>
-  <button type="button" data-form="payslip" aria-current="true">Brutto-Netto</button>
-  <button type="button" data-form="classes">Steuerklassen</button>
+<nav aria-label="Rechner">
+  <button type="button" data-form="payslip" aria-pressed="true">Brutto-Netto</button>
+  <button type="button" data-form="classes" aria-pressed="false">Steuerklassen</button>
 </nav>
 
 <form id="f">
@@ -82,6 +95,7 @@
   </label>
 </form>
 
+<p id="announce" class="vh" role="status" aria-live="polite"></p>
 <div id="out"></div>
 
 <p id="update" role="status">
@@ -192,8 +206,12 @@ function render() {
 
   const get = f => Number(wasm.casivell_result(f));
   const row = (label, field, cls = "") => {
-    const why = WHY[field] ? ` why" data-field="${field}` : "";
-    return `<tr class="${cls}${why}"><td>${label}</td><td>${euro(get(field))}</td></tr>`;
+    const cell = WHY[field]
+      ? `<button type="button" class="why" data-field="${field}" aria-expanded="false"
+           aria-controls="why"><span>${label}</span><span class="mark" aria-hidden="true">?</span>
+           <span class="vh">— Erklärung anzeigen</span></button>`
+      : label;
+    return `<tr class="${cls}"><td>${cell}</td><td>${euro(get(field))}</td></tr>`;
   };
 
   // The § 39b chain, shown when the Lohnsteuer line is opened. Every number is the engine's;
@@ -209,6 +227,7 @@ function render() {
   </div>`;
 
   out.innerHTML = `<table>
+    <caption class="vh">Lohnabrechnung: Brutto, Abzüge und Nettolohn</caption>
     ${row("Bruttolohn", FIELD.GROSS)}
     ${row("Lohnsteuer", FIELD.INCOME_TAX)}
     ${row("Solidaritätszuschlag", FIELD.SOLIDARITY)}
@@ -224,21 +243,30 @@ function render() {
   <div id="why"></div>`;
 
   // Explainability: every figure names the provision that produced it. Delegated from the
-  // table so it survives each re-render.
+  // table so it survives each re-render, and driven by a real button so it is reachable by
+  // keyboard — which it was not when the row itself carried the handler.
   out.querySelector("table").addEventListener("click", event => {
-    const tr = event.target.closest("tr.why");
+    const button = event.target.closest("button.why");
+    if (!button) return;
     const panel = document.getElementById("why");
-    if (!tr) return;
-    const field = Number(tr.dataset.field);
-    if (panel.dataset.open === String(field)) { panel.innerHTML = ""; panel.dataset.open = ""; return; }
+    const field = Number(button.dataset.field);
+    const open = panel.dataset.open === String(field);
+
+    out.querySelectorAll("button.why").forEach(other =>
+      other.setAttribute("aria-expanded", String(!open && other === button)));
+
+    if (open) { panel.innerHTML = ""; panel.dataset.open = ""; return; }
     const why = WHY[field];
     panel.dataset.open = String(field);
     panel.innerHTML = `<dl class="explain">
-      <dt>${tr.cells[0].textContent.trim()} — ${why.law}</dt>
+      <dt>${button.querySelector("span").textContent} — ${why.law}</dt>
       <dd>${why.text}</dd>
       ${why.chain ? chain() : ""}
     </dl>`;
   });
+
+  // One sentence for a screen reader, rather than the whole table on every keystroke.
+  announce(`Nettolohn ${euro(get(FIELD.NET))} von ${euro(get(FIELD.GROSS))} brutto.`);
 }
 
 // -------------------------------------------------------------------------
@@ -267,7 +295,7 @@ function renderClasses() {
     : `${euro(cents)} zurück`;
 
   const row = (label, arr) => `<tr>
-      <td>${label}</td>
+      <th scope="row" style="font-weight:400">${label}</th>
       <td class="num">${euro(g(arr, CF.HIGHER))}</td>
       <td class="num">${euro(g(arr, CF.LOWER))}</td>
       <td class="num">${euro(g(arr, CF.NET))}</td>
@@ -278,7 +306,9 @@ function renderClasses() {
       <strong>${euro(liability)}</strong> — bei allen drei Varianten. Die Steuerklasse
       entscheidet, <em>wann</em> gezahlt wird und von wem, nicht wie viel.</p>
     <table>
-      <tr><th>Variante</th><th>höher</th><th>niedriger</th><th>Netto ges.</th><th>Veranlagung</th></tr>
+      <caption class="vh">Steuerklassenvergleich: monatliche Abzüge, Netto und Veranlagung</caption>
+      <tr><th scope="col">Variante</th><th scope="col">höher</th><th scope="col">niedriger</th>
+          <th scope="col">Netto ges.</th><th scope="col">Veranlagung</th></tr>
       ${row("IV / IV", ARR.FOUR_FOUR)}
       ${row("III / V", ARR.THREE_FIVE)}
       ${row(factor ? `IV + Faktor 0,${String(factor).padStart(3, "0")}` : "IV + Faktor",
@@ -298,6 +328,14 @@ function renderClasses() {
       Klasse III — bei gleicher Jahressteuer. Vor einer Geburt ist die Klassenwahl
       deshalb eine echte Entscheidung.</dd>
     </dl>`;
+
+  announce(`Jahres-Einkommensteuer ${euro(liability)}, gleich bei allen drei Varianten.`);
+}
+
+/// Says one sentence to a screen reader. Announcing the whole table on every keystroke would
+/// be unusable; the figure someone came for is enough.
+function announce(text) {
+  document.getElementById("announce").textContent = text;
 }
 
 // -------------------------------------------------------------------------
@@ -317,7 +355,7 @@ document.querySelectorAll("nav button").forEach(button => {
   button.addEventListener("click", () => {
     currentForm = button.dataset.form;
     document.querySelectorAll("nav button").forEach(other =>
-      other.setAttribute("aria-current", String(other === button)));
+      other.setAttribute("aria-pressed", String(other === button)));
     show();
   });
 });
