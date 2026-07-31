@@ -267,6 +267,13 @@ into a **169 € demand after twenty years that no statute produced**. The two a
 equal at every horizon out to 44 years, because the error grew with distance and a spot check
 near 2026 would have passed.
 
+**The counterweight to all of the above is [`docs/LIMITATIONS.md`](docs/LIMITATIONS.md)**,
+which gathers in one place everything Casivell does not do — the five income categories it
+cannot see, the households it refuses rather than approximating, and the areas where the
+evidence is thin. Those caveats used to live only in module headers, where only someone
+reading the Rust would find them; a claim about accuracy is worth exactly as much as the page
+that bounds it.
+
 This machinery has already caught a live error. A test asserting the care-insurance
 rate floor at 2.4 % — a figure current secondary sources still publish — failed
 against the table's 2.6 %. The table was right: 2.4 % belongs to the 3.4 % base-rate

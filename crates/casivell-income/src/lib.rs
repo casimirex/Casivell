@@ -46,11 +46,14 @@
 //! - Rental, business, self-employment, agriculture and other income — five of the seven
 //!   categories of § 2 Abs. 1. **Capital income is covered**, in [`capital`], because it does
 //!   not run through the tariff at all and so is separable from the rest.
-//! - **Außergewöhnliche Belastungen** (§§ 33–33b): medical costs, disability, care. These
-//!   need a *zumutbare Belastung* computed from income, and the data to test it is not
-//!   available.
+//! - **§ 33a**: Unterhaltsleistungen and the Ausbildungsfreibetrag, which turn on the
+//!   recipient's own income and assets — facts this crate is not given.
 //! - **Riester and Rürup** beyond the statutory pension's own contributions.
 //! - Loss carry-forward (§ 10d), the Härteausgleich, and the Altersentlastungsbetrag.
+//!
+//! Covered, though each arrived after this list was first written: capital income in
+//! [`capital`] (§ 32d), the Progressionsvorbehalt in [`progression`] (§ 32b), and
+//! außergewöhnliche Belastungen in [`extraordinary`] (§§ 33, 33b).
 
 #![no_std]
 #![forbid(unsafe_code)]

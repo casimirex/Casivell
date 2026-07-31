@@ -365,10 +365,11 @@ pub struct Withholding {
     pub church_tax: Money,
     /// `BK`: the § 51a EStG assessment base apportioned to the pay period.
     ///
-    /// This is the annual tax recomputed **with** Kinderfreibeträge, which is
-    /// exactly the § 51a Abs. 2 base that `casivell_tax::church_tax` documents as
-    /// not yet implemented for the annual assessment. In the withholding path it
-    /// is implemented, and the church tax below is correct for families.
+    /// This is the annual tax recomputed **with** Kinderfreibeträge, which is exactly the
+    /// § 51a Abs. 2 base. `casivell_income::assess` computes the same base for the annual
+    /// assessment, so the withholding path and the assessment path now agree about a family's
+    /// surcharges — they did not when this crate was written, and this comment said so until
+    /// the assessment caught up.
     pub church_tax_base: Money,
     /// `LSTJAHR`: the annual Lohnsteuer this period's figure was derived from.
     pub annual_income_tax: Money,

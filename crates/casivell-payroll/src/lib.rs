@@ -51,9 +51,12 @@
 //!   which matter for pensions run through payroll.
 //! - **Sonstige Bezüge** (`SONSTB`): one-off payments such as a thirteenth month
 //!   or a bonus follow § 39b Abs. 3, a separate calculation.
-//! - **The Faktorverfahren** (`F`), an alternative to classes III/V for couples.
 //! - **ELStAM Freibetrag/Hinzurechnungsbetrag** beyond the plain annual amounts
 //!   this crate accepts.
+//!
+//! The **Faktorverfahren** of § 39f *is* implemented, in [`mod@factor`], along with a
+//! comparison of the three arrangements a married couple may choose between. It arrived after
+//! the list above was first written.
 
 #![no_std]
 #![forbid(unsafe_code)]

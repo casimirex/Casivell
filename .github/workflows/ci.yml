@@ -58,6 +58,12 @@ jobs:
       - name: No statutory literals in calculation crates
         run: python3 scripts/check_no_statutory_literals.py
 
+      # D7: the scope sections are the honest counterweight to everything else the
+      # documentation claims, and they drift. This fails if a crate advertises the absence
+      # of something it implements.
+      - name: Scope claims are not stale
+        run: python3 scripts/check_scope_claims.py
+
       # D6: the reference implementation must stay runnable, since the cross-check
       # values in casivell-tax are regenerated from it by hand.
       - name: Reference implementation runs

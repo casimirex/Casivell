@@ -45,20 +45,18 @@
 //!   and bootstraps from it. Casivell ships no historical return table, because market
 //!   data has its own provenance problem and inventing a plausible series would be
 //!   exactly the failure `docs/ROADMAP_ERRATA.md` records.
-//! - **Elterngeld.** Modelling it correctly needs the Progressionsvorbehalt of § 32b EStG —
-//!   Elterngeld is tax-free but raises the rate on everything else — which in turn needs the
-//!   annual assessment inside the kernel rather than monthly withholding. Adding the payment
-//!   without the rate effect would understate a family's tax, so it is absent rather than
-//!   approximate. [`Event::OtherIncome`] takes a known net amount for anyone who wants to
-//!   model it themselves.
-//! - **Buying property.** Needs Grunderwerbsteuer by state (3.5 %–6.5 %) and mortgage
-//!   amortisation. The deposit and the payment can be modelled today with
-//!   [`Event::OneOff`] and [`Event::ExpenseChange`], which is not the same thing.
-//! - **The annual assessment.** Tax is computed by withholding, which the statute designs
-//!   as an approximation of the annual liability. A refund or a further demand is not
-//!   modelled, because determining the taxable income is not implemented.
-//! - **Anything but employment income.** No capital income, no self-employment, no
-//!   transfers.
+//! - **Anything but employment income and the benefits named below.** No capital income
+//!   inside the kernel, no self-employment, no rental income, no transfers.
+//! - **A second earner.** The kernel models one employment. Tax classes IV, V and VI are
+//!   therefore not assessed at all rather than assessed on half a household — see
+//!   [`NoAssessment`].
+//! - **Health and care cover during an unpaid interruption.** Someone on unpaid leave stays
+//!   insured and pays the contributions themselves, which the kernel does not add.
+//!
+//! Since that list was first written, three of its entries have been implemented and are now
+//! part of the kernel: the **annual assessment** with its refund or demand, **Elterngeld**
+//! with the § 32b Progressionsvorbehalt, and **buying property** with Grunderwerbsteuer and an
+//! amortising mortgage.
 
 #![no_std]
 #![forbid(unsafe_code)]
