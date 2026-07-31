@@ -889,6 +889,15 @@ pub(crate) fn parse_classes(args: Vec<String>) -> Result<ClassesRequest, ArgErro
         }
     }
 
+    // The comparison prices all three arrangements itself, so `--class` has no effect on what
+    // is shown — requiring it, as the shared parser does, made the form ask for a figure it
+    // then ignored. Class IV stands in where none is given: it is what a married couple holds
+    // by default, and it reaches only the circumstances the three arrangements share.
+    if !shared.iter().any(|argument| argument == "--class") {
+        shared.push("--class".to_owned());
+        shared.push("4".to_owned());
+    }
+
     Ok(ClassesRequest {
         base: Request::parse(shared)?,
         partner_gross: partner_gross.ok_or_else(|| ArgError::Required("--partner".to_owned()))?,

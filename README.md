@@ -49,8 +49,14 @@ crates/
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
 ├── casivell-sim/       Month-by-month household projection, streaming
-└── casivell-cli/       The `casivell` command — the only crate that uses std
+├── casivell-cli/       The `casivell` command
+└── casivell-wasm/      A dependency-free C ABI, for the browser build in `web/`
 ```
+
+`casivell-cli` and `casivell-wasm` are the only crates that use `std`; every engine crate is
+`#![no_std]`. Every crate `#![forbid(unsafe_code)]` except `casivell-wasm`, which **denies** it
+— a `cdylib` export is spelled `#[unsafe(no_mangle)]` in Rust 2024 and `forbid` cannot be
+relaxed even at the site. There is no `unsafe` block anywhere in the workspace.
 
 The dependency direction is the design: `core` knows nothing of German law;
 `lawdata` holds law but performs no calculation; calculation crates hold no
