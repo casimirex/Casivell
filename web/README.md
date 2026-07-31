@@ -68,6 +68,32 @@ statutory datasets.
 and without a cache, and the install shell — with a fake `Cache` and a switchable network.
 Node has `Response` and `fetch` built in, so it needs no dependencies. CI runs it.
 
+## Languages
+
+German and English, chosen from a stored preference, then the browser's list, then German.
+German is the fallback rather than English on purpose: the figures, the terms and the documents
+they are compared against are all German.
+
+**Statutory terms are not translated.** Lohnsteuer, Solidaritätszuschlag, Vorsorgepauschale,
+Beitragsbemessungsgrenze — these are the words printed on the payslip and the Steuerbescheid
+the reader is holding. Rendering "Lohnsteuer" as "wage tax" would make a figure *harder* to
+reconcile against the document it came from, which is the one job this tool has. An
+English-speaking user in Germany needs the German noun and an English explanation of it, not an
+English noun with no counterpart on any form.
+
+**Numbers stay in German format** in both languages — 1.234,56 € — for the same reason. Every
+document these figures will be compared against uses it, and matching the payslip matters more
+than matching the reader's numeric convention.
+
+`node web/i18n.test.mjs` checks that the two tables carry the same keys, that no value is
+empty, that the message functions take the same arguments in both, and that the statutory terms
+have not leaked into a language table. A missing key renders as nothing, in the language nobody
+on the team reads.
+
+The static markup carries German text that the switcher replaces, so a page whose script never
+runs is still readable and every control still has a name — which is also what the
+accessibility check requires.
+
 ## Accessibility
 
 Audited against WCAG 2.2 AA. What the audit found, and what changed:

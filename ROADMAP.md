@@ -419,7 +419,24 @@ near 2026 would have passed.
 - [x] **The projection form, with a chart.** Parameters are named and set one at a time rather
       than passed as thirteen positional `i64`s, because a function with thirteen positional
       arguments is one nobody calls correctly twice.
-- [ ] i18n scaffolding — the last item, and the only one left in Phase 5.
+- [x] **German and English**, with one deliberate exception: statutory terms are not
+      translated.
+
+**"Lohnsteuer" does not become "wage tax".** These are the words printed on the payslip and the
+Steuerbescheid the reader is holding, and an English noun with no counterpart on any German
+form makes a figure *harder* to reconcile against its source — which is the one job this tool
+has. An English-speaking user in Germany needs the German noun and an English explanation of
+it. Numbers stay in German format for the same reason: every document they will be compared
+against uses 1.234,56 €.
+
+German is the fallback language rather than English, again because the figures and the
+documents are German.
+
+**Two bugs the guards caught while doing it.** `i18n.js` was added to the page and not to the
+service worker's shell, which would have left the app broken offline — the shell is now
+asserted rather than assumed. And moving the chrome's text into JavaScript left every button
+nameless if the script failed; the markup now carries German fallback text that the switcher
+replaces.
 
 **The chart is a hand-drawn SVG path**, no library, for the same reason the ABI is
 hand-written. Projected years are dashed: a solid line through them would claim a certainty

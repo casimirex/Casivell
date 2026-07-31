@@ -119,7 +119,12 @@ await test("the install handler caches the whole shell", async () => {
   cache.addAll = async files => cached.push(...files);
   await listeners.install({ waitUntil: promise => promise });
   await settle();
-  for (const file of ["./index.html", "./casivell_wasm.wasm", "./manifest.webmanifest"]) {
+  // Every file the page needs to run. `i18n.js` was added to the page and *not* to this
+  // list, which would have left the app broken offline — the shell must be asserted, not
+  // assumed.
+  for (const file of [
+    "./index.html", "./i18n.js", "./casivell_wasm.wasm", "./manifest.webmanifest",
+  ]) {
     assert.ok(cached.includes(file), `${file} must be cached for offline use`);
   }
 });

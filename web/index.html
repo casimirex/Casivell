@@ -72,44 +72,51 @@
 </style>
 </head>
 <body>
-<h1>Casivell</h1>
-<p class="sub">Brutto zu Netto, gerechnet nach dem BMF-Programmablaufplan. Nichts verlässt dieses Gerät.</p>
+<div style="display:flex;justify-content:space-between;align-items:start;gap:1rem">
+  <div>
+    <h1>Casivell</h1>
+    <p class="sub" data-i18n="tagline">Brutto zu Netto, gerechnet nach dem BMF-Programmablaufplan. Nichts verlässt dieses Gerät.</p>
+  </div>
+  <label style="font-size:.8rem"><span class="vh">Sprache / Language</span>
+    <select id="lang"><option value="de">Deutsch</option><option value="en">English</option></select>
+  </label>
+</div>
 
 <nav aria-label="Rechner">
-  <button type="button" data-form="payslip" aria-pressed="true">Brutto-Netto</button>
-  <button type="button" data-form="classes" aria-pressed="false">Steuerklassen</button>
-  <button type="button" data-form="project" aria-pressed="false">Projektion</button>
+  <button type="button" data-form="payslip" aria-pressed="true" data-i18n="formPayslip">Brutto-Netto</button>
+  <button type="button" data-form="classes" aria-pressed="false" data-i18n="formClasses">Steuerklassen</button>
+  <button type="button" data-form="project" aria-pressed="false" data-i18n="formProject">Projektion</button>
 </nav>
 
 <form id="f">
-  <label class="full" id="grossRow">Bruttolohn (€ / Monat)
+  <label class="full" id="grossRow"><span data-i18n="fieldGross">Bruttolohn (€ / Monat)</span>
     <input type="number" id="gross" value="5500" min="0" step="1">
   </label>
-  <label id="partnerRow" hidden>Bruttolohn Partner (€ / Monat)
+  <label id="partnerRow" hidden><span data-i18n="fieldPartner">Bruttolohn Partner (€ / Monat)</span>
     <input type="number" id="partner" value="1800" min="0" step="1">
   </label>
-  <label id="classRow">Steuerklasse
+  <label id="classRow"><span data-i18n="fieldClass">Steuerklasse</span>
     <select id="class">
       <option value="1" selected>I</option><option value="2">II</option>
       <option value="3">III</option><option value="4">IV</option>
       <option value="5">V</option><option value="6">VI</option>
     </select>
   </label>
-  <label>Bundesland <select id="land"></select></label>
-  <label>Jahr <select id="year"></select></label>
-  <label>Alter <input type="number" id="age" value="30" min="0" max="120"></label>
-  <label>Kinder <input type="number" id="children" value="0" min="0" max="20"></label>
-  <label>Zusatzbeitrag (%) <input type="number" id="kvz" value="2.9" min="0" max="10" step="0.1"></label>
-  <label id="expensesRow" hidden>Ausgaben (€ / Monat)
+  <label><span data-i18n="fieldLand">Bundesland</span> <select id="land"></select></label>
+  <label><span data-i18n="fieldYear">Jahr</span> <select id="year"></select></label>
+  <label><span data-i18n="fieldAge">Alter</span> <input type="number" id="age" value="30" min="0" max="120"></label>
+  <label><span data-i18n="fieldChildren">Kinder</span> <input type="number" id="children" value="0" min="0" max="20"></label>
+  <label><span data-i18n="fieldKvz">Zusatzbeitrag (%)</span> <input type="number" id="kvz" value="2.9" min="0" max="10" step="0.1"></label>
+  <label id="expensesRow" hidden><span data-i18n="fieldExpenses">Ausgaben (€ / Monat)</span>
     <input type="number" id="expenses" value="2000" min="0" step="50"></label>
-  <label id="yearsRow" hidden>Jahre
+  <label id="yearsRow" hidden><span data-i18n="fieldYears">Jahre</span>
     <input type="number" id="years" value="40" min="1" max="70"></label>
-  <label id="returnRow" hidden>Rendite (%)
+  <label id="returnRow" hidden><span data-i18n="fieldReturn">Rendite (%)</span>
     <input type="number" id="ret" value="4" min="0" max="20" step="0.5"></label>
-  <label id="payGrowthRow" hidden>Lohnwachstum (%)
+  <label id="payGrowthRow" hidden><span data-i18n="fieldPayGrowth">Lohnwachstum (%)</span>
     <input type="number" id="paygrowth" value="2" min="0" max="20" step="0.5"></label>
-  <label>Kirchensteuer
-    <select id="church"><option value="0" selected>nein</option><option value="1">ja</option></select>
+  <label><span data-i18n="fieldChurch">Kirchensteuer</span>
+    <select id="church"><option value="0" selected data-i18n="no">nein</option><option value="1" data-i18n="yes">ja</option></select>
   </label>
 </form>
 
@@ -117,21 +124,26 @@
 <div id="out"></div>
 
 <p id="update" role="status">
-  Eine neuere Fassung ist verfügbar — möglicherweise mit geänderten Rechtsständen.
-  <button type="button" id="reload">Neu laden</button>
+  <span data-i18n="updateAvailable">Eine neuere Fassung ist verfügbar.</span>
+  <button type="button" id="reload" data-i18n="reload">Neu laden</button>
 </p>
 
 <footer>
-  <p><strong>Keine Steuerberatung</strong> (§§ 1–4 StBerG). Vorläufige Werte; der
-     Jahresausgleich rechnet ab.</p>
+  <p><strong data-i18n="noAdvice">Keine Steuerberatung</strong> <span data-i18n="noAdviceRest">(§§ 1–4 StBerG). Vorläufige Werte; der Jahresausgleich rechnet ab.</span></p>
   <p id="basis"></p>
-  <p>Was dieser Rechner <em>nicht</em> kann, steht in <code>docs/LIMITATIONS.md</code>.</p>
-  <p>Funktioniert offline. Der Rechtsstand oben gilt dann für die zuletzt geladene Fassung —
-     bei bestehender Verbindung wird auf eine neuere hingewiesen.</p>
+  <p><span data-i18n="limitations">Was dieser Rechner nicht kann, steht in</span> <code>docs/LIMITATIONS.md</code>.</p>
+  <p data-i18n="offline">Funktioniert offline.</p>
 </footer>
 
 <script type="module">
 // The sixteen states, in `Bundesland::ALL` order — the index the ABI expects.
+import { MESSAGES, TERMS, initialLanguage } from "./i18n.js";
+
+// The statutory terms are German in both languages: they are the words on the payslip, and an
+// English noun with no counterpart on any German form would make a figure harder to reconcile,
+// not easier. Only the prose around them is translated.
+let T = MESSAGES.de;
+
 const LAENDER = ["Baden-Württemberg","Bayern","Berlin","Brandenburg","Bremen","Hamburg",
   "Hessen","Mecklenburg-Vorpommern","Niedersachsen","Nordrhein-Westfalen","Rheinland-Pfalz",
   "Saarland","Sachsen","Sachsen-Anhalt","Schleswig-Holstein","Thüringen"];
@@ -147,6 +159,8 @@ const FIELD = { GROSS:0, INCOME_TAX:1, SOLIDARITY:2, CHURCH_TAX:3, CONTRIBUTIONS
 
 // Where each figure comes from. The citations are structural — a paragraph number, not an
 // amount — so they do not go stale when a rate changes; the amounts all come from the engine.
+// The German prose is kept for both languages here: these are provision-level explanations of
+// German statute, and the terms in them are the ones on the documents.
 const WHY = {
   [FIELD.INCOME_TAX]: {
     law: "§ 39b EStG · BMF-Programmablaufplan",
@@ -175,18 +189,13 @@ const WHY = {
   [FIELD.NET]: { law: "—", text: "Brutto abzüglich aller Posten darüber. Vorläufig: der Jahresausgleich rechnet ab." },
 };
 
-const ERRORS = {
-  "-1": "Für dieses Jahr liegen keine Daten vor.",
-  "-2": "Unbekannte Steuerklasse.",
-  "-3": "Unbekanntes Bundesland.",
-  "-4": "Eine Eingabe liegt außerhalb des zulässigen Bereichs. Kinder setzen die Elterneigenschaft voraus.",
-  "-5": "Die Rechnung hat den darstellbaren Bereich verlassen.",
-};
-
 // No bindings crate: the module is instantiated directly and its exports are plain numbers.
 const { instance } = await WebAssembly.instantiateStreaming(fetch("casivell_wasm.wasm"), {});
 const wasm = instance.exports;
 
+// Always German formatting, in both languages. Every document these figures are compared
+// against uses 1.234,56 € — matching the payslip matters more than matching the reader's
+// numeric convention. See i18n.js.
 const euro = cents => (cents / 100).toLocaleString("de-DE",
   { style: "currency", currency: "EUR" });
 
@@ -202,8 +211,8 @@ landSelect.value = "9";
 // The Datenstand: the digest of the statutory data these figures rest on. Two people quoting
 // the same one are looking at the same law rather than assuming they are.
 const digest = BigInt.asUintN(64, wasm.casivell_fingerprint(last)).toString(16).padStart(16, "0");
-document.getElementById("basis").textContent =
-  `Rechtsstand ${first === last ? first : `${first}–${last}`}, gesetzlich in Kraft. Datenstand ${digest}.`;
+const basis = () => `${T.legalBasis} ${first === last ? first : `${first}–${last}`}, ` +
+  `${T.inForce}. ${TERMS.datenstand} ${digest}.`;
 
 const value = id => Number(document.getElementById(id).value);
 
@@ -218,7 +227,7 @@ function render() {
 
   const out = document.getElementById("out");
   if (code !== 0) {
-    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    out.innerHTML = `<p class="error">${T.errors[String(code)] ?? T.errors.unknown}</p>`;
     return;
   }
 
@@ -227,7 +236,7 @@ function render() {
     const cell = WHY[field]
       ? `<button type="button" class="why" data-field="${field}" aria-expanded="false"
            aria-controls="why"><span>${label}</span><span class="mark" aria-hidden="true">?</span>
-           <span class="vh">— Erklärung anzeigen</span></button>`
+           <span class="vh">${T.explainShow}</span></button>`
       : label;
     return `<tr class="${cls}"><td>${cell}</td><td>${euro(get(field))}</td></tr>`;
   };
@@ -236,28 +245,28 @@ function render() {
   // nothing here is recomputed in JavaScript, because a second implementation would be a
   // second thing to be wrong.
   const chain = () => `<div class="chain">
-    <span>Jahresarbeitslohn <code>ZRE4</code></span><span>${euro(get(FIELD.ANNUAL_GROSS))}</span>
-    <span>− Tabellenfreibeträge <code>ZTABFB</code></span><span>−${euro(get(FIELD.TABLE_ALLOWANCES))}</span>
-    <span>− Vorsorgepauschale <code>VSP</code></span><span>−${euro(get(FIELD.VORSORGEPAUSCHALE))}</span>
-    <span class="rule">= zu versteuernder Betrag <code>ZVE</code></span><span>${euro(get(FIELD.TAXABLE_ANNUAL))}</span>
-    <span>Jahreslohnsteuer <code>LSTJAHR</code></span><span>${euro(get(FIELD.ANNUAL_INCOME_TAX))}</span>
-    <span class="rule">÷ 12 = Lohnsteuer im Monat</span><span>${euro(get(FIELD.INCOME_TAX))}</span>
+    <span>${TERMS.annualGross} <code>ZRE4</code></span><span>${euro(get(FIELD.ANNUAL_GROSS))}</span>
+    <span>− ${TERMS.allowances} <code>ZTABFB</code></span><span>−${euro(get(FIELD.TABLE_ALLOWANCES))}</span>
+    <span>− ${TERMS.vorsorge} <code>VSP</code></span><span>−${euro(get(FIELD.VORSORGEPAUSCHALE))}</span>
+    <span class="rule">= ${TERMS.taxable} <code>ZVE</code></span><span>${euro(get(FIELD.TAXABLE_ANNUAL))}</span>
+    <span>${TERMS.annualTax} <code>LSTJAHR</code></span><span>${euro(get(FIELD.ANNUAL_INCOME_TAX))}</span>
+    <span class="rule">${T.perMonth}</span><span>${euro(get(FIELD.INCOME_TAX))}</span>
   </div>`;
 
   out.innerHTML = `<table>
-    <caption class="vh">Lohnabrechnung: Brutto, Abzüge und Nettolohn</caption>
-    ${row("Bruttolohn", FIELD.GROSS)}
-    ${row("Lohnsteuer", FIELD.INCOME_TAX)}
-    ${row("Solidaritätszuschlag", FIELD.SOLIDARITY)}
-    ${get(FIELD.CHURCH_TAX) ? row("Kirchensteuer", FIELD.CHURCH_TAX) : ""}
-    ${row("Sozialabgaben", FIELD.CONTRIBUTIONS)}
-    ${row("Rentenversicherung", FIELD.PENSION, "sub")}
-    ${row("Krankenversicherung", FIELD.HEALTH, "sub")}
-    ${row("Pflegeversicherung", FIELD.CARE, "sub")}
-    ${row("Arbeitslosenversicherung", FIELD.UNEMPLOYMENT, "sub")}
-    ${row("Nettolohn", FIELD.NET, "total")}
+    <caption class="vh">${T.captionPayslip}</caption>
+    ${row(TERMS.gross, FIELD.GROSS)}
+    ${row(TERMS.incomeTax, FIELD.INCOME_TAX)}
+    ${row(TERMS.solidarity, FIELD.SOLIDARITY)}
+    ${get(FIELD.CHURCH_TAX) ? row(TERMS.churchTax, FIELD.CHURCH_TAX) : ""}
+    ${row(TERMS.contributions, FIELD.CONTRIBUTIONS)}
+    ${row(TERMS.pension, FIELD.PENSION, "sub")}
+    ${row(TERMS.health, FIELD.HEALTH, "sub")}
+    ${row(TERMS.care, FIELD.CARE, "sub")}
+    ${row(TERMS.unemployment, FIELD.UNEMPLOYMENT, "sub")}
+    ${row(TERMS.net, FIELD.NET, "total")}
   </table>
-  <p class="sub" style="margin-top:.75rem">Auf eine Zeile klicken, um zu sehen, welche Regel sie erzeugt hat.</p>
+  <p class="sub" style="margin-top:.75rem">${T.explainHint}</p>
   <div id="why"></div>`;
 
   // Explainability: every figure names the provision that produced it. Delegated from the
@@ -284,7 +293,7 @@ function render() {
   });
 
   // One sentence for a screen reader, rather than the whole table on every keystroke.
-  announce(`Nettolohn ${euro(get(FIELD.NET))} von ${euro(get(FIELD.GROSS))} brutto.`);
+  announce(T.announceNet(euro(get(FIELD.NET)), euro(get(FIELD.GROSS))));
 }
 
 // -------------------------------------------------------------------------
@@ -300,7 +309,7 @@ function renderClasses() {
 
   const out = document.getElementById("out");
   if (code !== 0) {
-    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    out.innerHTML = `<p class="error">${T.errors[String(code)] ?? T.errors.unknown}</p>`;
     return;
   }
 
@@ -308,9 +317,7 @@ function renderClasses() {
   const liability = Number(wasm.casivell_class_liability());
   const factor = Number(wasm.casivell_class_factor());
 
-  const settlement = cents => cents < 0
-    ? `${euro(-cents)} nachzahlen`
-    : `${euro(cents)} zurück`;
+  const settlement = cents => cents < 0 ? T.owes(euro(-cents)) : T.back(euro(cents));
 
   const row = (label, arr) => `<tr>
       <th scope="row" style="font-weight:400">${label}</th>
@@ -320,34 +327,24 @@ function renderClasses() {
       <td class="num">${settlement(g(arr, CF.SETTLEMENT))}</td>
     </tr>`;
 
-  out.innerHTML = `<p class="lede">Die Jahres-Einkommensteuer beträgt
-      <strong>${euro(liability)}</strong> — bei allen drei Varianten. Die Steuerklasse
-      entscheidet, <em>wann</em> gezahlt wird und von wem, nicht wie viel.</p>
+  out.innerHTML = `<p class="lede">${T.classesLede(euro(liability))}</p>
     <table>
-      <caption class="vh">Steuerklassenvergleich: monatliche Abzüge, Netto und Veranlagung</caption>
-      <tr><th scope="col">Variante</th><th scope="col">höher</th><th scope="col">niedriger</th>
-          <th scope="col">Netto ges.</th><th scope="col">Veranlagung</th></tr>
+      <caption class="vh">${T.captionClasses}</caption>
+      <tr><th scope="col">${T.colVariant}</th><th scope="col">${T.colHigher}</th>
+          <th scope="col">${T.colLower}</th><th scope="col">${T.colNetTotal}</th>
+          <th scope="col">${T.colAssessment}</th></tr>
       ${row("IV / IV", ARR.FOUR_FOUR)}
       ${row("III / V", ARR.THREE_FIVE)}
       ${row(factor ? `IV + Faktor 0,${String(factor).padStart(3, "0")}` : "IV + Faktor",
             ARR.FOUR_FACTOR)}
     </table>
-    ${factor ? "" : `<p class="sub">Der Faktor ist nur unter 1 zulässig (§ 39f Abs. 1).
-       Bei etwa gleichen Gehältern zieht Klasse IV bereits richtig ab, es gibt nichts zu
-       korrigieren.</p>`}
+    ${factor ? "" : `<p class="sub">${T.noFactor}</p>`}
     <dl class="explain">
-      <dt>Warum die Summe gleich bleibt</dt>
-      <dd>§ 32a Abs. 5 EStG bestimmt die Jahressteuer eines Ehepaares aus dem gemeinsamen
-      Einkommen. Keine Kombination von Klassen ändert daran etwas — der Jahresausgleich
-      holt die Differenz in beide Richtungen zurück.</dd>
-      <dt>Wo die Wahl trotzdem zählt</dt>
-      <dd>Lohnersatzleistungen werden aus dem <em>Netto</em> berechnet: Elterngeld,
-      Arbeitslosen- und Krankengeld fallen in Klasse V spürbar niedriger aus als in
-      Klasse III — bei gleicher Jahressteuer. Vor einer Geburt ist die Klassenwahl
-      deshalb eine echte Entscheidung.</dd>
+      <dt>${T.whySameTitle}</dt><dd>${T.whySame}</dd>
+      <dt>${T.whyMattersTitle}</dt><dd>${T.whyMatters}</dd>
     </dl>`;
 
-  announce(`Jahres-Einkommensteuer ${euro(liability)}, gleich bei allen drei Varianten.`);
+  announce(T.announceLiability(euro(liability)));
 }
 
 /// Says one sentence to a screen reader. Announcing the whole table on every keystroke would
@@ -387,7 +384,7 @@ function renderProject() {
   const out = document.getElementById("out");
   const code = wasm.casivell_project_run();
   if (code !== 0) {
-    out.innerHTML = `<p class="error">${ERRORS[String(code)] ?? "Unbekannter Fehler."}</p>`;
+    out.innerHTML = `<p class="error">${T.errors[String(code)] ?? T.errors.unknown}</p>`;
     return;
   }
 
@@ -405,9 +402,10 @@ function renderProject() {
 
   out.innerHTML = `${chart(series)}
     <table>
-      <caption class="vh">Projektion: Vermögen und Rentenanwartschaft je Jahr</caption>
-      <tr><th scope="col">Jahr</th><th scope="col">Netto/mtl.</th><th scope="col">Sparrate</th>
-          <th scope="col">Vermögen</th><th scope="col">Rente/mtl.</th></tr>
+      <caption class="vh">${T.captionProject}</caption>
+      <tr><th scope="col">${T.colYear}</th><th scope="col">${T.colNetMonthly}</th>
+          <th scope="col">${T.colSaved}</th><th scope="col">${T.colWealth}</th>
+          <th scope="col">${T.colPension}</th></tr>
       ${series.filter((_, i) => i % 5 === 0 || i === n - 1).map(r => `<tr>
         <th scope="row" style="font-weight:400">${r.year}${r.enacted ? "" : " *"}</th>
         <td class="num">${euro(r.net)}</td>
@@ -417,21 +415,14 @@ function renderProject() {
       </tr>`).join("")}
     </table>
     <dl class="explain">
-      <dt>Was hier steht</dt>
-      <dd>Jede Zeile ist ein Jahresende. Mit <strong>*</strong> markierte Jahre beruhen auf
-      fortgeschriebenen Rechengrößen, nicht auf geltendem Recht — jenseits von
-      ${series.filter(r => r.enacted).at(-1)?.year ?? "?"} gibt es keine beschlossenen Werte.</dd>
-      ${turns ? `<dt>Das Vermögen kehrt um</dt>
-      <dd>Der höchste Stand liegt bei ${euro(peak.wealth)} im Jahr ${peak.year}, danach fällt
-      er. Wenn die Ausgaben mit den Preisen steigen und der Lohn nicht, überholen sie
-      irgendwann das Netto — hier ab dem Jahr ${peak.year}.</dd>` : ""}
-      <dt>Was nicht enthalten ist</dt>
-      <dd>Immobilien, Elterngeld, Kapitalerträge und Lebensereignisse rechnet nur die
-      Kommandozeile. Renditen sind Annahmen, keine Zusagen.</dd>
+      <dt>${T.whatsHereTitle}</dt>
+      <dd>${T.whatsHere(series.filter(r => r.enacted).at(-1)?.year ?? "?")}</dd>
+      ${turns ? `<dt>${T.turnsTitle}</dt>
+      <dd>${T.turns(euro(peak.wealth), peak.year)}</dd>` : ""}
+      <dt>${T.missingTitle}</dt><dd>${T.missing}</dd>
     </dl>`;
 
-  announce(`Nach ${n} Jahren ${euro(last.wealth)} Vermögen und
-    ${euro(last.pension)} monatliche Rentenanwartschaft.`);
+  announce(T.announceProjection(n, euro(last.wealth), euro(last.pension)));
 }
 
 /// Draws the wealth series as an SVG path.
@@ -462,7 +453,7 @@ function chart(series) {
 
   return `<figure>
     <svg class="chart" viewBox="0 0 ${W} ${H}" role="img"
-         aria-label="Vermögensverlauf von ${series[0].year} bis ${series.at(-1).year}, Höchststand ${euro(max)}">
+         aria-label="${T.chartLabel(series[0].year, series.at(-1).year, euro(max))}">
       <line class="grid" x1="${PAD.l}" x2="${W - PAD.r}" y1="${y(max).toFixed(1)}" y2="${y(max).toFixed(1)}"/>
       ${zero}
       <path class="line" d="${path([0, lastEnacted + 1])}"/>
@@ -471,8 +462,7 @@ function chart(series) {
       <text x="${W - PAD.r}" y="${H - 6}" text-anchor="end">${series.at(-1).year}</text>
       <text x="${PAD.l}" y="${(y(max) - 4).toFixed(1)}">${euro(max)}</text>
     </svg>
-    <figcaption>Geldvermögen, nominal. Gestrichelt: Jahre auf fortgeschriebenen
-      Rechengrößen.</figcaption>
+    <figcaption>${T.chartCaption}</figcaption>
   </figure>`;
 }
 
@@ -503,8 +493,30 @@ document.querySelectorAll("nav button").forEach(button => {
   });
 });
 
+/// Applies a language: the message table, the static chrome, and `<html lang>`.
+///
+/// `lang` on the root element is not cosmetic — it tells a screen reader which voice to use,
+/// and leaving it at `de` while showing English prose would be worse than not translating.
+function applyLanguage(code) {
+  T = MESSAGES[code] ?? MESSAGES.de;
+  document.documentElement.lang = T.lang;
+  document.getElementById("lang").value = T.lang;
+  for (const node of document.querySelectorAll("[data-i18n]")) {
+    node.textContent = T[node.dataset.i18n] ?? "";
+  }
+  document.getElementById("basis").textContent = basis();
+  try { localStorage.setItem("casivell-lang", T.lang); } catch { /* private mode */ }
+  show();
+}
+
+document.getElementById("lang").addEventListener("change", event =>
+  applyLanguage(event.target.value));
+
 document.getElementById("f").addEventListener("input", show);
-show();
+
+let stored = null;
+try { stored = localStorage.getItem("casivell-lang"); } catch { /* private mode */ }
+applyLanguage(initialLanguage(stored, navigator.languages ?? [navigator.language]));
 
 // -------------------------------------------------------------------------
 // Offline

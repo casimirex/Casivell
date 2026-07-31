@@ -15,11 +15,17 @@
 // the statutory data the figures rest on. A cached build shows the digest it was built with,
 // so a stale answer is identifiable rather than merely suspected.
 
-const VERSION = "v1";
+const VERSION = "v2";
 const CACHE = `casivell-${VERSION}`;
 
 // The whole application. Two files and a manifest — there is no framework to cache.
-const SHELL = ["./", "./index.html", "./casivell_wasm.wasm", "./manifest.webmanifest"];
+const SHELL = [
+  "./",
+  "./index.html",
+  "./i18n.js",
+  "./casivell_wasm.wasm",
+  "./manifest.webmanifest",
+];
 
 self.addEventListener("install", event => {
   // No `skipWaiting`: a running page keeps the build it started with. Swapping the wasm under
