@@ -1,6 +1,7 @@
 [workspace]
 resolver = "3"
 members = [
+    "crates/casivell-benefits",
     "crates/casivell-cli",
     "crates/casivell-core",
     "crates/casivell-income",

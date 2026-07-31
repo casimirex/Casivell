@@ -52,6 +52,7 @@
     )
 )]
 
+pub mod benefits;
 pub mod deductions;
 pub mod income_tax;
 pub mod payroll;
@@ -60,6 +61,7 @@ pub mod retirement;
 pub mod social;
 pub mod surcharges;
 
+pub use benefits::ElterngeldParameters;
 pub use deductions::DeductionParameters;
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use payroll::{PayrollParameters, TaxClass};
