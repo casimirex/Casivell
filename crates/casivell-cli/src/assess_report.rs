@@ -98,8 +98,55 @@ fn write_chain(out: &mut String, income: &TaxableIncome) -> Result<(), MoneyErro
             "actual"
         },
     )?;
+    write_extraordinary(out, income)?;
     line(out, "= Einkommen", income.income, "")?;
     let _ = writeln!(out);
+    Ok(())
+}
+
+/// The §§ 33 and 33b lines, and — where it matters — why they came to nothing.
+fn write_extraordinary(out: &mut String, income: &TaxableIncome) -> Result<(), MoneyError> {
+    let burden = &income.extraordinary;
+    if burden.total.is_zero() && !burden.general_costs_absorbed() {
+        return Ok(());
+    }
+    line(
+        out,
+        "− Außergewöhnliche Belastungen (§§ 33, 33b)",
+        burden.total,
+        "",
+    )?;
+    if burden.general_costs_absorbed() {
+        // The distinction that matters: costs were claimed and the threshold ate them. A bare
+        // zero would read as "you claimed nothing".
+        let _ = writeln!(
+            out,
+            "      {} € of costs, all below the {} € zumutbare Belastung (§ 33 Abs. 3)",
+            euro(burden.general_costs)?,
+            euro(burden.reasonable_burden)?
+        );
+    } else if !burden.general_deductible.is_zero() {
+        let _ = writeln!(
+            out,
+            "      {} € of costs less the {} € zumutbare Belastung (§ 33 Abs. 3)",
+            euro(burden.general_costs)?,
+            euro(burden.reasonable_burden)?
+        );
+    }
+    if !burden.disability_lump_sum.is_zero() {
+        let _ = writeln!(
+            out,
+            "      including a {} € Behinderten-Pauschbetrag, not reduced by the threshold",
+            euro(burden.disability_lump_sum)?
+        );
+    }
+    if !burden.care_lump_sum.is_zero() {
+        let _ = writeln!(
+            out,
+            "      including a {} € Pflege-Pauschbetrag",
+            euro(burden.care_lump_sum)?
+        );
+    }
     Ok(())
 }
 

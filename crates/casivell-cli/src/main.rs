@@ -45,7 +45,7 @@ use casivell_core::{Money, TaxYear};
 use casivell_income::{
     AssessmentLaw, Contributions, Employee, assess, capital_income_tax, taxable_income,
 };
-use casivell_lawdata::{DeductionParameters, SocialParameters};
+use casivell_lawdata::{DeductionParameters, ExtraordinaryBurdenParameters, SocialParameters};
 use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
 use casivell_sim::{Household, SimulationConfig, simulate};
@@ -103,6 +103,10 @@ ASSESS OPTIONS
       --donations <a>     Other Sonderausgaben (§§ 10–10b)
       --capital <a>       Gross capital income for the year (§ 20)
       --benefits <a>      Tax-free wage-replacement benefits (§ 32b)
+      --medical <a>       Extraordinary costs under § 33 (medical, funeral, …)
+      --disability <gdb>  Grad der Behinderung, 20–100 (§ 33b Abs. 3)
+      --helpless          Hilflos, blind or taubblind (§ 33b Abs. 3 Satz 3)
+      --care-grade <n>    Pflegegrad of someone cared for, 2–5 (§ 33b Abs. 6)
 
 CLASSES OPTIONS
       --partner <amount>  The second spouse's monthly gross (required)
@@ -168,6 +172,31 @@ fn monthly_equivalent(gross: Money, period: PayPeriod) -> Result<Money, casivell
     gross.div_int(period.months(), casivell_core::Rounding::HalfUp)
 }
 
+/// Every enacted parameter set the assessment needs, resolved together.
+///
+/// One `Err` per missing set would repeat the same sentence four times; resolving them here
+/// keeps `run_assess` about the assessment rather than about lookups.
+fn enacted_law(
+    year: TaxYear,
+    displayed: u16,
+) -> Result<
+    (
+        PayrollLaw,
+        DeductionParameters,
+        SocialParameters,
+        ExtraordinaryBurdenParameters,
+    ),
+    String,
+> {
+    let missing = |what: &str| format!("no enacted {what} parameters for {displayed}.");
+    Ok((
+        PayrollLaw::for_year(year).map_err(|_| missing("payroll"))?,
+        DeductionParameters::for_year(year).map_err(|_| missing("deduction"))?,
+        SocialParameters::for_year(year).map_err(|_| missing("social insurance"))?,
+        ExtraordinaryBurdenParameters::for_year(year).map_err(|_| missing("§§ 33/33b"))?,
+    ))
+}
+
 /// A year's employee facts, from twelve identical months.
 fn annual_employee(
     request: &args::AssessRequest,
@@ -187,6 +216,7 @@ fn annual_employee(
         church_tax_paid: pay.church_tax.mul_int(12)?,
         other_special_expenses: request.other_special_expenses,
         wage_replacement_benefits: request.benefits,
+        extraordinary: request.extraordinary,
         children: request.base.children,
     })
 }
@@ -224,12 +254,7 @@ fn run_assess(argv: Vec<String>) -> Result<String, String> {
             TaxYear::LAST_REPRESENTABLE.get(),
         )
     })?;
-    let law = PayrollLaw::for_year(year)
-        .map_err(|_| format!("no enacted payroll parameters for {}.", base.year))?;
-    let deductions = DeductionParameters::for_year(year)
-        .map_err(|_| format!("no enacted deduction parameters for {}.", base.year))?;
-    let social = SocialParameters::for_year(year)
-        .map_err(|_| format!("no enacted social parameters for {}.", base.year))?;
+    let (law, deductions, social, burden) = enacted_law(year, base.year)?;
 
     let employment = build_employment(&base).map_err(|e| e.to_string())?;
     let monthly_gross = monthly_equivalent(base.gross, base.period).map_err(|e| e.to_string())?;
@@ -247,20 +272,22 @@ fn run_assess(argv: Vec<String>) -> Result<String, String> {
 
     let employee =
         annual_employee(&request, &pay, monthly_gross, &social).map_err(|e| e.to_string())?;
-    let income = taxable_income(&employee, &deductions).map_err(|e| e.to_string())?;
-
-    let assessment_law = AssessmentLaw {
-        tariff: law.tariff,
-        solidarity: law.solidarity,
-        church: law.church,
-        deductions,
-    };
     // Class III is a single-earner married couple, whose whole income this form has. Every
     // other class is either an individual or a household the form cannot see all of, so it
     // assesses individually and the notes say the figure is an estimate.
     let filing = match base.tax_class {
         casivell_lawdata::TaxClass::Class3 => FilingStatus::JointSplitting,
         _ => FilingStatus::Individual,
+    };
+    let income =
+        taxable_income(&employee, filing, &deductions, &burden).map_err(|e| e.to_string())?;
+
+    let assessment_law = AssessmentLaw {
+        tariff: law.tariff,
+        solidarity: law.solidarity,
+        church: law.church,
+        deductions,
+        burden,
     };
     let church = if base.church { Some(base.land) } else { None };
     let assessment = assess(

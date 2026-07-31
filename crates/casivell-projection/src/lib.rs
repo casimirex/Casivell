@@ -181,6 +181,7 @@ pub fn project(year: TaxYear, assumptions: &Assumptions) -> Result<LawYear, Proj
         retirement: parameters::carry_forward_retirement(&base.retirement, year),
         deductions: parameters::project_deductions(&base.deductions, year, steps, assumptions)?,
         benefits: parameters::carry_forward_benefits(&base.benefits, year),
+        burden: parameters::carry_forward_burden(&base.burden, year),
     })
 }
 

@@ -21,8 +21,8 @@
 use casivell_core::{Money, TaxYear};
 use casivell_lawdata::{
     CareInsurance, ChurchTaxParameters, DataStatus, DeductionParameters, ElterngeldParameters,
-    HealthInsurance, PensionInsurance, Provenance, RetirementParameters, SocialParameters,
-    SolidarityParameters, UnemploymentInsurance,
+    ExtraordinaryBurdenParameters, HealthInsurance, PensionInsurance, Provenance,
+    RetirementParameters, SocialParameters, SolidarityParameters, UnemploymentInsurance,
 };
 
 use crate::ProjectionError;
@@ -100,6 +100,9 @@ fn concat_basis(what: &'static str, note: &'static str) -> &'static str {
         }
         ("retirement, carried forward", _) => {
             "§§ 77, 235 SGB VI, assumed unchanged from 2026 (NOT enacted law)"
+        }
+        ("außergewöhnliche Belastungen, carried forward", _) => {
+            "§§ 33, 33b EStG, thresholds and Pauschbeträge assumed unchanged from 2026 (NOT enacted law)"
         }
         ("Elterngeld, carried forward", _) => {
             "BEEG, amounts assumed unchanged from 2026 (NOT enacted law)"
@@ -325,6 +328,30 @@ pub(crate) fn project_deductions(
             assumptions,
         ),
     })
+}
+
+/// Carries the §§ 33 and 33b parameters forward with their status downgraded.
+///
+/// Both income thresholds of § 33 Abs. 3 are nominal and have no adjustment rule — they were
+/// set in Deutsche Mark and merely converted, and have not moved since. Carrying them forward
+/// is therefore accurate rather than lazy, and the consequence is that the zumutbare Belastung
+/// silently reaches a larger share of households every year as incomes rise past a fixed
+/// 51 130 €. That is what the statute does; the projection only continues it.
+#[must_use]
+pub(crate) fn carry_forward_burden(
+    base: &ExtraordinaryBurdenParameters,
+    year: TaxYear,
+) -> ExtraordinaryBurdenParameters {
+    ExtraordinaryBurdenParameters {
+        year,
+        provenance: Provenance::new(
+            concat_basis("außergewöhnliche Belastungen, carried forward", ""),
+            base.provenance.source_url,
+            base.provenance.verified_on,
+            DataStatus::Projected,
+        ),
+        ..*base
+    }
 }
 
 /// Carries the Elterngeld parameters forward with their status downgraded.

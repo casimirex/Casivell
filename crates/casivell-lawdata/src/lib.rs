@@ -54,6 +54,7 @@
 
 pub mod benefits;
 pub mod deductions;
+pub mod extraordinary;
 pub mod income_tax;
 pub mod payroll;
 pub mod provenance;
@@ -63,6 +64,7 @@ pub mod surcharges;
 
 pub use benefits::ElterngeldParameters;
 pub use deductions::DeductionParameters;
+pub use extraordinary::{BurdenRates, BurdenRow, ExtraordinaryBurdenParameters};
 pub use income_tax::{IncomeTaxTariff, ProgressionZone, ProportionalZone};
 pub use payroll::{PayrollParameters, TaxClass};
 pub use provenance::{DataStatus, Provenance};
@@ -97,6 +99,8 @@ pub struct LawYear {
     pub deductions: DeductionParameters,
     /// Elterngeld parameters, BEEG.
     pub benefits: ElterngeldParameters,
+    /// Außergewöhnliche Belastungen, §§ 33 and 33b EStG.
+    pub burden: ExtraordinaryBurdenParameters,
 }
 
 impl LawYear {
@@ -136,6 +140,10 @@ impl LawYear {
             Ok(b) => b,
             Err(e) => return Err(e),
         };
+        let burden = match ExtraordinaryBurdenParameters::for_year(year) {
+            Ok(b) => b,
+            Err(e) => return Err(e),
+        };
         Ok(Self {
             year,
             income_tax,
@@ -145,6 +153,7 @@ impl LawYear {
             retirement,
             deductions,
             benefits,
+            burden,
         })
     }
 

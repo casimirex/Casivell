@@ -231,7 +231,9 @@ tables rather than with a third-party calculator.
       The crossover is lower than intuition suggests: at 20 000 € of other income the
       marginal rate is 24,7 %, and stacking the capital income carries the average over 25 %,
       so the flat rate already wins.
-- [ ] Außergewöhnliche Belastungen (§§ 33–33b), which need a zumutbare Belastung.
+- [x] **Außergewöhnliche Belastungen** (§§ 33, 33b), with the zumutbare Belastung as the
+      staircase BFH VI R 75/14 requires. § 33a (Unterhalt) remains, since it turns on the
+      recipient's own income and assets.
 - [x] **Tax class comparison III/V versus IV+Faktor**, with § 39f implemented in
       `casivell-payroll`. The comparison's whole point is that the annual tax is *identical*
       under all three: the class decides when it is paid and by which spouse.
@@ -406,6 +408,39 @@ near 2026 would have passed.
 - [ ] Inexactness and `Projected` status shown inline, never buried
 - [ ] German first, i18n-ready; WCAG 2.2 AA (see §8)
 - [ ] PWA, fully offline
+
+### Phase 2+ — Außergewöhnliche Belastungen ✅ *complete*
+
+**The roadmap said this was blocked because "the data to test it is not available". That was
+wrong, and inherited rather than checked.** § 33 Abs. 3's table is printed in the statute in
+full — three income bands, four family rows, twelve percentages — and § 33b's Pauschbeträge
+likewise. Nothing was missing. The lesson is the same one the roadmap was rewritten for at the
+start: a claim about the data should be verified before it is carried forward.
+
+**The method is not in the statute, though.** § 33 Abs. 3 gives the bands and says nothing
+about how they combine, and the administration long applied one band's percentage to the whole
+income. The BFH rejected that in VI R 75/14 of 19 January 2017 — each percentage applies only
+to the part of income in its own band, a staircase exactly like § 32a's tariff — and the BMF
+adopted it by letter of 1 June 2017. The provenance cites the case and the letter alongside
+the statute, because the arithmetic comes from them and not from the text.
+
+For a childless single on 60 000 €: 5 % of 15 340, plus 6 % of 35 790, plus 7 % of 8 870 =
+**3 535,30 €**, against **4 200 €** under the old flat reading. Both are pinned in a test so a
+regression to the cliff reading fails loudly rather than quietly costing people money.
+
+**Two things the report now says that a bare number could not.** Most § 33 claims deduct
+nothing — 3 000 € of dental work against a 3 449 € threshold is a real expense and a zero
+deduction — so the assess form distinguishes "your costs were below the threshold" from "you
+claimed nothing". And the § 33b Pauschbetrag is **not** reduced by that threshold, so someone
+with a recognised Grad der Behinderung receives a deduction in a year when the § 33 route gives
+them none. Running the Pauschbetrag through the threshold would wipe out an entitlement the
+statute grants unconditionally; adding the two routes together would double-count. They are
+kept apart and the report says which produced what.
+
+**The thresholds are unindexed**, set in Deutsche Mark and merely converted, so
+`carry_forward_burden` holds them fixed. The consequence is that the zumutbare Belastung
+silently reaches a larger share of households every year as incomes rise past a frozen
+51 130 €. That is the statute; the projection only continues it.
 
 ### Phase 2+ — The CLI reaches the whole engine ✅ *complete*
 

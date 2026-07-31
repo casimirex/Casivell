@@ -34,7 +34,8 @@
 
 use casivell_core::{Money, MoneyError, Rounding};
 use casivell_lawdata::{
-    Bundesland, ChurchTaxParameters, DeductionParameters, IncomeTaxTariff, SolidarityParameters,
+    Bundesland, ChurchTaxParameters, DeductionParameters, ExtraordinaryBurdenParameters,
+    IncomeTaxTariff, SolidarityParameters,
 };
 use casivell_tax::{FilingStatus, solidarity_surcharge};
 
@@ -115,6 +116,8 @@ pub struct AssessmentLaw {
     pub church: ChurchTaxParameters,
     /// Deduction parameters, for the Kinderfreibetrag and Kindergeld.
     pub deductions: DeductionParameters,
+    /// §§ 33 and 33b parameters, for außergewöhnliche Belastungen.
+    pub burden: ExtraordinaryBurdenParameters,
 }
 
 /// Runs the annual assessment.
@@ -254,7 +257,8 @@ mod tests {
     use crate::vorsorge::Contributions;
     use casivell_core::{Money, TaxYear};
     use casivell_lawdata::{
-        Bundesland, ChurchTaxParameters, DeductionParameters, IncomeTaxTariff, SolidarityParameters,
+        Bundesland, ChurchTaxParameters, DeductionParameters, ExtraordinaryBurdenParameters,
+        IncomeTaxTariff, SolidarityParameters,
     };
     use casivell_tax::FilingStatus;
 
@@ -265,6 +269,7 @@ mod tests {
             solidarity: SolidarityParameters::for_year(year).unwrap(),
             church: ChurchTaxParameters::for_year(year).unwrap(),
             deductions: DeductionParameters::for_year(year).unwrap(),
+            burden: ExtraordinaryBurdenParameters::for_year(year).unwrap(),
         }
     }
 
@@ -291,9 +296,16 @@ mod tests {
             church_tax_paid: Money::ZERO,
             other_special_expenses: Money::ZERO,
             wage_replacement_benefits: Money::ZERO,
+            extraordinary: crate::extraordinary::BurdenClaim::default(),
             children: 0,
         };
-        taxable_income(&employee, &law().deductions).expect("computes")
+        taxable_income(
+            &employee,
+            FilingStatus::Individual,
+            &law().deductions,
+            &law().burden,
+        )
+        .expect("computes")
     }
 
     /// The same, but with tax-free wage-replacement benefits alongside.

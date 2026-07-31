@@ -273,10 +273,13 @@ pub(crate) fn settle_year(
         // above — which is the whole reason the kernel carries it rather than treating it as
         // ordinary non-employment income.
         wage_replacement_benefits: tally.benefits,
+        // §§ 33, 33b are a claim a household makes on its return, not something the kernel
+        // can infer from a salary. Left empty; `casivell assess` takes them as inputs.
+        extraordinary: casivell_income::BurdenClaim::default(),
         children: 0,
     };
 
-    let income = taxable_income(&employee, &law.deductions)?;
+    let income = taxable_income(&employee, filing, &law.deductions, &law.burden)?;
     let assessment = assess(
         &income,
         filing,
@@ -314,6 +317,7 @@ pub(crate) fn assessment_law(law: &casivell_lawdata::LawYear) -> AssessmentLaw {
         solidarity: law.solidarity,
         church: law.church_tax,
         deductions: law.deductions,
+        burden: law.burden,
     }
 }
 

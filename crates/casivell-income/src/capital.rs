@@ -145,7 +145,8 @@ mod tests {
     use super::{AssessmentLaw, CapitalRoute, capital_income_tax};
     use casivell_core::{Money, TaxYear};
     use casivell_lawdata::{
-        Bundesland, ChurchTaxParameters, DeductionParameters, IncomeTaxTariff, SolidarityParameters,
+        Bundesland, ChurchTaxParameters, DeductionParameters, ExtraordinaryBurdenParameters,
+        IncomeTaxTariff, SolidarityParameters,
     };
     use casivell_tax::FilingStatus;
 
@@ -165,6 +166,7 @@ mod tests {
             solidarity: SolidarityParameters::for_year(year).unwrap(),
             church: ChurchTaxParameters::for_year(year).unwrap(),
             deductions: DeductionParameters::for_year(year).unwrap(),
+            burden: ExtraordinaryBurdenParameters::for_year(year).unwrap(),
         };
         capital_income_tax(euro(capital), euro(other), filing, church, &law).expect("computes")
     }

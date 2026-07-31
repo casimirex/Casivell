@@ -612,6 +612,8 @@ pub(crate) struct AssessRequest {
     pub(crate) capital_income: Money,
     /// Tax-free wage-replacement benefits received, § 32b Abs. 1 Nr. 1.
     pub(crate) benefits: Money,
+    /// The §§ 33 and 33b claim.
+    pub(crate) extraordinary: casivell_income::BurdenClaim,
 }
 
 /// Parses the `assess` form.
@@ -623,6 +625,7 @@ pub(crate) fn parse_assess(args: Vec<String>) -> Result<AssessRequest, ArgError>
     let mut shared = Vec::with_capacity(args.len());
     let (mut work_expenses, mut other, mut capital, mut benefits) =
         (Money::ZERO, Money::ZERO, Money::ZERO, Money::ZERO);
+    let mut extraordinary = casivell_income::BurdenClaim::default();
 
     let mut iter = args.into_iter();
     while let Some(flag) = iter.next() {
@@ -631,6 +634,20 @@ pub(crate) fn parse_assess(args: Vec<String>) -> Result<AssessRequest, ArgError>
             "--donations" => other = parse_money(&flag, &mut iter)?,
             "--capital" => capital = parse_money(&flag, &mut iter)?,
             "--benefits" => benefits = parse_money(&flag, &mut iter)?,
+            "--medical" => extraordinary.general_costs = parse_money(&flag, &mut iter)?,
+            "--disability" => {
+                extraordinary.disability_degree = parse_small(
+                    &flag,
+                    &mut iter,
+                    100,
+                    "a Grad der Behinderung from 0 to 100",
+                )?;
+            }
+            "--helpless" => extraordinary.helpless = true,
+            "--care-grade" => {
+                extraordinary.care_grade =
+                    parse_small(&flag, &mut iter, 5, "a Pflegegrad from 0 to 5")?;
+            }
             other_flag => {
                 shared.push(other_flag.to_owned());
                 if takes_a_value(other_flag) {
@@ -646,7 +663,26 @@ pub(crate) fn parse_assess(args: Vec<String>) -> Result<AssessRequest, ArgError>
         other_special_expenses: other,
         capital_income: capital,
         benefits,
+        extraordinary,
     })
+}
+
+/// Parses a small bounded integer, refusing anything past `maximum`.
+fn parse_small<I>(flag: &str, iter: &mut I, maximum: u8, expected: &str) -> Result<u8, ArgError>
+where
+    I: Iterator<Item = String>,
+{
+    let raw = next_value(flag, iter)?;
+    let bad = || ArgError::BadValue {
+        flag: flag.to_owned(),
+        value: raw.clone(),
+        expected: expected.to_owned(),
+    };
+    let value: u8 = raw.parse().map_err(|_| bad())?;
+    if value > maximum {
+        return Err(bad());
+    }
+    Ok(value)
 }
 
 /// A request to compare tax-class arrangements.

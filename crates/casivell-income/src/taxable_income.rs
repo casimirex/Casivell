@@ -1,8 +1,11 @@
 //! The § 2 EStG chain from gross pay to taxable income.
 
-use casivell_core::{Money, MoneyError};
-use casivell_lawdata::DeductionParameters;
+use casivell_tax::FilingStatus;
 
+use casivell_core::{Money, MoneyError};
+use casivell_lawdata::{DeductionParameters, ExtraordinaryBurdenParameters};
+
+use crate::extraordinary::{BurdenClaim, ExtraordinaryBurden, extraordinary_burden};
 use crate::vorsorge::{Contributions, Vorsorgeaufwendungen, vorsorgeaufwendungen};
 
 /// What an employee earned and paid over a year.
@@ -33,6 +36,13 @@ pub struct Employee {
     pub church_tax_paid: Money,
     /// Other Sonderausgaben under §§ 10–10b: donations, maintenance payments, training costs.
     pub other_special_expenses: Money,
+    /// Außergewöhnliche Belastungen claimed under §§ 33 and 33b.
+    ///
+    /// Deducted at the same stage as the Sonderausgaben — § 2 Abs. 4 takes both off the
+    /// Gesamtbetrag der Einkünfte — but computed quite differently: the general costs are
+    /// reduced by a threshold derived from that same total income, while the § 33b
+    /// Pauschbeträge are not.
+    pub extraordinary: BurdenClaim,
     /// Tax-free wage-replacement benefits received in the year, § 32b Abs. 1 Nr. 1 EStG.
     ///
     /// Elterngeld, Arbeitslosengeld, Kurzarbeitergeld, Krankengeld. **Not** taxable income
@@ -78,6 +88,13 @@ pub struct TaxableIncome {
     /// Whether the § 10c Pauschbetrag was used.
     pub special_expenses_lump_sum_used: bool,
 
+    /// The §§ 33 and 33b deduction, with its threshold and both routes exposed.
+    ///
+    /// Reported in full rather than as one number because the interesting answer is usually
+    /// *why* it came to nothing: a household that spent 3 000 € on dentistry wants to see the
+    /// threshold that swallowed it, not a bare zero.
+    pub extraordinary: ExtraordinaryBurden,
+
     /// Einkommen: total income less all Sonderausgaben.
     ///
     /// This is the figure the Kinderfreibetrag is subtracted from, and therefore the base the
@@ -105,7 +122,9 @@ pub struct TaxableIncome {
 /// [`MoneyError`] on a domain violation.
 pub fn taxable_income(
     employee: &Employee,
+    filing: FilingStatus,
     deductions: &DeductionParameters,
+    burden: &ExtraordinaryBurdenParameters,
 ) -> Result<TaxableIncome, MoneyError> {
     // § 9a: the Pauschbetrag is a floor, so the larger of the two applies.
     let lump_sum = deductions.employee_lump_sum;
@@ -132,9 +151,22 @@ pub fn taxable_income(
     let other_special_expenses_deducted = actual_other.max(other_lump_sum);
     let special_expenses_lump_sum_used = actual_other <= other_lump_sum;
 
+    // §§ 33, 33b: measured against the Gesamtbetrag der Einkünfte, not the gross salary and
+    // not the Einkommen — so it is computed here, after the total income is known and before
+    // it is reduced.
+    let extraordinary = extraordinary_burden(
+        &employee.extraordinary,
+        total_income,
+        filing,
+        employee.children,
+        burden,
+    )?;
+
+    // § 2 Abs. 4: Sonderausgaben and außergewöhnliche Belastungen come off together.
     let income = total_income
         .sub(provision.total)?
         .sub(other_special_expenses_deducted)?
+        .sub(extraordinary.total)?
         .floor_at_zero();
 
     Ok(TaxableIncome {
@@ -146,6 +178,7 @@ pub fn taxable_income(
         provision,
         other_special_expenses_deducted,
         special_expenses_lump_sum_used,
+        extraordinary,
         income,
         wage_replacement_benefits: employee.wage_replacement_benefits.floor_at_zero(),
         employment_gross: employee.gross_annual.floor_at_zero(),
@@ -156,8 +189,14 @@ pub fn taxable_income(
 mod tests {
     use super::{Employee, taxable_income};
     use crate::vorsorge::Contributions;
+    use casivell_tax::FilingStatus;
+
     use casivell_core::{Money, TaxYear};
-    use casivell_lawdata::DeductionParameters;
+    use casivell_lawdata::{DeductionParameters, ExtraordinaryBurdenParameters};
+
+    fn burden() -> ExtraordinaryBurdenParameters {
+        ExtraordinaryBurdenParameters::for_year(TaxYear::new(2026).unwrap()).expect("enacted")
+    }
 
     fn deductions() -> DeductionParameters {
         DeductionParameters::for_year(TaxYear::new(2026).unwrap()).unwrap()
@@ -184,6 +223,7 @@ mod tests {
             church_tax_paid: Money::ZERO,
             other_special_expenses: Money::ZERO,
             wage_replacement_benefits: Money::ZERO,
+            extraordinary: crate::extraordinary::BurdenClaim::default(),
             children: 0,
         }
     }
@@ -192,7 +232,13 @@ mod tests {
     /// against the statute, which is the point of exposing them.
     #[test]
     fn the_chain_computes_each_stage() {
-        let result = taxable_income(&employee(), &deductions()).expect("computes");
+        let result = taxable_income(
+            &employee(),
+            FilingStatus::Individual,
+            &deductions(),
+            &burden(),
+        )
+        .expect("computes");
 
         // § 9a: the Pauschbetrag, since no actual expenses were claimed.
         assert_eq!(result.work_expenses_deducted, euro(1_230));
@@ -223,13 +269,20 @@ mod tests {
     fn the_work_expenses_lump_sum_is_a_floor() {
         let mut modest = employee();
         modest.work_expenses = euro(400);
-        let result = taxable_income(&modest, &deductions()).expect("computes");
+        let result = taxable_income(&modest, FilingStatus::Individual, &deductions(), &burden())
+            .expect("computes");
         assert_eq!(result.work_expenses_deducted, euro(1_230));
         assert!(result.work_expenses_lump_sum_used);
 
         let mut substantial = employee();
         substantial.work_expenses = euro(3_000);
-        let result = taxable_income(&substantial, &deductions()).expect("computes");
+        let result = taxable_income(
+            &substantial,
+            FilingStatus::Individual,
+            &deductions(),
+            &burden(),
+        )
+        .expect("computes");
         assert_eq!(result.work_expenses_deducted, euro(3_000));
         assert!(!result.work_expenses_lump_sum_used);
     }
@@ -239,14 +292,21 @@ mod tests {
     fn the_special_expenses_lump_sum_is_also_a_floor() {
         let mut churchgoer = employee();
         churchgoer.church_tax_paid = euro(700);
-        let result = taxable_income(&churchgoer, &deductions()).expect("computes");
+        let result = taxable_income(
+            &churchgoer,
+            FilingStatus::Individual,
+            &deductions(),
+            &burden(),
+        )
+        .expect("computes");
         assert_eq!(result.other_special_expenses_deducted, euro(700));
         assert!(!result.special_expenses_lump_sum_used);
 
         // A trivial donation stays below the Pauschbetrag, which then applies.
         let mut trivial = employee();
         trivial.other_special_expenses = euro(20);
-        let result = taxable_income(&trivial, &deductions()).expect("computes");
+        let result = taxable_income(&trivial, FilingStatus::Individual, &deductions(), &burden())
+            .expect("computes");
         assert_eq!(result.other_special_expenses_deducted, euro(36));
     }
 
@@ -258,7 +318,8 @@ mod tests {
         while gross <= 200_000 {
             let mut e = employee();
             e.gross_annual = euro(gross);
-            let r = taxable_income(&e, &deductions()).expect("computes");
+            let r = taxable_income(&e, FilingStatus::Individual, &deductions(), &burden())
+                .expect("computes");
 
             assert!(
                 r.employment_income <= r.gross,
@@ -283,7 +344,9 @@ mod tests {
         while gross <= 150_000 {
             let mut e = employee();
             e.gross_annual = euro(gross);
-            let income = taxable_income(&e, &deductions()).expect("computes").income;
+            let income = taxable_income(&e, FilingStatus::Individual, &deductions(), &burden())
+                .expect("computes")
+                .income;
             assert!(income >= previous, "Einkommen fell at {gross}");
             previous = income;
             gross = gross.saturating_add(2_500);
@@ -296,7 +359,8 @@ mod tests {
     fn a_tiny_salary_floors_at_zero() {
         let mut tiny = employee();
         tiny.gross_annual = euro(800);
-        let result = taxable_income(&tiny, &deductions()).expect("computes");
+        let result = taxable_income(&tiny, FilingStatus::Individual, &deductions(), &burden())
+            .expect("computes");
         assert_eq!(result.employment_income, Money::ZERO);
         assert_eq!(result.income, Money::ZERO);
     }
@@ -305,7 +369,13 @@ mod tests {
     /// then ignored them would pass every monotonicity test.
     #[test]
     fn the_deductions_reduce_the_taxable_income_materially() {
-        let result = taxable_income(&employee(), &deductions()).expect("computes");
+        let result = taxable_income(
+            &employee(),
+            FilingStatus::Individual,
+            &deductions(),
+            &burden(),
+        )
+        .expect("computes");
         let reduction = result.gross.sub(result.income).unwrap();
         // Roughly 12 150 EUR on a 54 000 EUR salary: the Pauschbetrag, the pension
         // contribution, health and care cover, and the 36 EUR Pauschbetrag.

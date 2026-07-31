@@ -45,10 +45,19 @@
 
 use casivell_core::{Money, Rate, TaxYear};
 use casivell_income::vorsorge::Contributions;
-use casivell_income::{Employee, taxable_income};
-use casivell_lawdata::{Bundesland, DeductionParameters, SocialParameters, TaxClass};
+use casivell_income::{BurdenClaim, Employee, taxable_income};
+use casivell_lawdata::{
+    Bundesland, DeductionParameters, ExtraordinaryBurdenParameters, SocialParameters, TaxClass,
+};
 use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, withhold};
 use casivell_social::{Insured, contributions};
+use casivell_tax::FilingStatus;
+
+/// The §§ 33/33b parameters. This test claims none, so they only supply the threshold that
+/// is applied to a claim of zero — but the signature needs them.
+fn burden() -> ExtraordinaryBurdenParameters {
+    ExtraordinaryBurdenParameters::for_year(TaxYear::new(2026).unwrap()).unwrap()
+}
 
 fn year() -> TaxYear {
     TaxYear::new(2026).expect("2026 is verified")
@@ -84,9 +93,10 @@ fn both(monthly_gross_euro: i64, children: u8, is_parent: bool) -> (Money, Money
         church_tax_paid: Money::ZERO,
         other_special_expenses: Money::ZERO,
         wage_replacement_benefits: Money::ZERO,
+        extraordinary: BurdenClaim::default(),
         children,
     };
-    let statutory = taxable_income(&employee, &deductions)
+    let statutory = taxable_income(&employee, FilingStatus::Individual, &deductions, &burden())
         .expect("computes")
         .provision
         .total;
