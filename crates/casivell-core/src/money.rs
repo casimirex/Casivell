@@ -252,6 +252,37 @@ impl Money {
         Self::from_cents(quotient)
     }
 
+    /// Scales the amount by the ratio `numerator / denominator`, rounding once.
+    ///
+    /// Computes `self × numerator ÷ denominator` with the product carried in `i128`, so the
+    /// ratio is applied *exactly* rather than being rounded to a [`Rate`] first. Both terms
+    /// are [`Money`] because the ratio's units cancel: what is being expressed is a
+    /// proportion between two amounts, not a rate.
+    ///
+    /// This exists for § 32b EStG, where the tax on a notional income is apportioned to the
+    /// real one. Going through a `Rate` would quantise the proportion to a part per million,
+    /// which at a six-figure income is tens of cents of avoidable error in a figure the
+    /// statute gives no rounding rule for.
+    ///
+    /// # Errors
+    ///
+    /// [`MoneyError::DivisionByZero`] if `denominator` is zero, [`MoneyError::Overflow`] if
+    /// the result leaves the representable domain.
+    pub const fn mul_div(
+        self,
+        numerator: Self,
+        denominator: Self,
+        mode: Rounding,
+    ) -> Result<Self, MoneyError> {
+        // Bounded by 1e12 × 1e12 = 1e24, inside i128's 1.7e38. The quotient is bounded by
+        // `self` whenever `numerator <= denominator`, which is the only way this is used.
+        let scaled = (self.cents as i128).saturating_mul(numerator.cents as i128);
+        match narrow_i128_div(scaled, denominator.cents as i128, mode) {
+            Ok(v) => Self::from_cents(v),
+            Err(e) => Err(e),
+        }
+    }
+
     /// Divides the amount into `parts` equal shares, rounding as named.
     ///
     /// Used for the employer/employee halving of social-insurance contributions.

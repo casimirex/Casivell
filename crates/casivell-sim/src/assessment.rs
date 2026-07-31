@@ -259,6 +259,11 @@ pub(crate) fn settle_year(
         // and it is small — a few euro of deduction on a difference of a few tens.
         church_tax_paid: tally.church_tax,
         other_special_expenses: Money::ZERO,
+        // § 32b benefits are not yet produced by the kernel: `Event::OtherIncome` takes a
+        // known net amount whose tax character is deliberately unspecified, so treating it
+        // as a wage-replacement benefit would assert something the caller did not say.
+        // Elterngeld will populate this.
+        wage_replacement_benefits: Money::ZERO,
         children: 0,
     };
 

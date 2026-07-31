@@ -33,6 +33,14 @@ pub struct Employee {
     pub church_tax_paid: Money,
     /// Other Sonderausgaben under §§ 10–10b: donations, maintenance payments, training costs.
     pub other_special_expenses: Money,
+    /// Tax-free wage-replacement benefits received in the year, § 32b Abs. 1 Nr. 1 EStG.
+    ///
+    /// Elterngeld, Arbeitslosengeld, Kurzarbeitergeld, Krankengeld. **Not** taxable income
+    /// and deliberately not added to any total here — but it raises the rate on everything
+    /// else through the Progressionsvorbehalt, so it is carried through to the assessment.
+    /// Held on the employee rather than passed to [`crate::assess`] separately because it is
+    /// a fact about the person's year, like their salary.
+    pub wage_replacement_benefits: Money,
     /// Children entitled to a Kinderfreibetrag, counted in whole children for this taxpayer.
     ///
     /// A parent assessed individually normally holds half of each child's allowance, so the
@@ -75,6 +83,15 @@ pub struct TaxableIncome {
     /// This is the figure the Kinderfreibetrag is subtracted from, and therefore the base the
     /// Günstigerprüfung compares at.
     pub income: Money,
+
+    /// The § 32b benefits carried through from [`Employee`], untaxed but rate-raising.
+    ///
+    /// Present on the *output* as well as the input so the assessment cannot be run without
+    /// them by accident: a caller that has a `TaxableIncome` has everything § 32b needs.
+    pub wage_replacement_benefits: Money,
+    /// Bruttoarbeitslohn, carried through because § 32b Abs. 2 Nr. 1 needs it to decide how
+    /// much of the Arbeitnehmer-Pauschbetrag the employment income already absorbed.
+    pub employment_gross: Money,
 }
 
 /// Runs the § 2 EStG chain down to *Einkommen*.
@@ -130,6 +147,8 @@ pub fn taxable_income(
         other_special_expenses_deducted,
         special_expenses_lump_sum_used,
         income,
+        wage_replacement_benefits: employee.wage_replacement_benefits.floor_at_zero(),
+        employment_gross: employee.gross_annual.floor_at_zero(),
     })
 }
 
@@ -164,6 +183,7 @@ mod tests {
             },
             church_tax_paid: Money::ZERO,
             other_special_expenses: Money::ZERO,
+            wage_replacement_benefits: Money::ZERO,
             children: 0,
         }
     }

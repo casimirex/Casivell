@@ -83,6 +83,7 @@ fn both(monthly_gross_euro: i64, children: u8, is_parent: bool) -> (Money, Money
         contributions: paid,
         church_tax_paid: Money::ZERO,
         other_special_expenses: Money::ZERO,
+        wage_replacement_benefits: Money::ZERO,
         children,
     };
     let statutory = taxable_income(&employee, &deductions)

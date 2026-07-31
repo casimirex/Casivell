@@ -36,8 +36,9 @@ use casivell_core::{Money, MoneyError, Rounding};
 use casivell_lawdata::{
     Bundesland, ChurchTaxParameters, DeductionParameters, IncomeTaxTariff, SolidarityParameters,
 };
-use casivell_tax::{FilingStatus, income_tax, solidarity_surcharge};
+use casivell_tax::{FilingStatus, solidarity_surcharge};
 
+use crate::progression::progression_tax;
 use crate::taxable_income::TaxableIncome;
 
 /// Which support a family received, after the § 31 comparison.
@@ -82,6 +83,13 @@ pub struct Assessment {
     pub withheld: Money,
     /// Withheld less owed. Positive is a refund; negative is a further demand.
     pub refund: Money,
+
+    /// Whether § 32b raised the rate on this assessment.
+    ///
+    /// Surfaced because it is the single most surprising line on a Steuerbescheid: the tax
+    /// rose while the taxable income did not, and a household that cannot see why will
+    /// assume an error. Use [`crate::progression_tax`] directly for the full breakdown.
+    pub progression_applies: bool,
 
     /// Whether this assessment is exact or a good estimate.
     ///
@@ -131,12 +139,28 @@ pub fn assess(
     let allowance = child_allowance(children_tenths, &law.deductions)?;
     let benefit = child_benefit(children_tenths, &law.deductions)?;
 
+    // § 32b: tax-free wage-replacement benefits raise the rate on everything else. Applied
+    // through a closure so *both* branches of the § 31 Günstigerprüfung use it — comparing a
+    // progression-adjusted figure against a plain one would decide the wrong way for any
+    // family that received Elterngeld, which is a great many of them.
+    let tax_at = |zve: Money| -> Result<Money, MoneyError> {
+        Ok(progression_tax(
+            zve,
+            income.wage_replacement_benefits,
+            income.employment_gross,
+            filing,
+            &law.tariff,
+            &law.deductions,
+        )?
+        .income_tax)
+    };
+
     // Without the allowance: tax on the full income, Kindergeld kept.
-    let plain_tax = income_tax(income.income, &law.tariff, filing)?.income_tax;
+    let plain_tax = tax_at(income.income)?;
 
     // With it: tax on the reduced income, plus the Kindergeld added back (§ 31 Satz 5).
     let reduced_income = income.income.sub(allowance)?.floor_at_zero();
-    let reduced_tax = income_tax(reduced_income, &law.tariff, filing)?.income_tax;
+    let reduced_tax = tax_at(reduced_income)?;
     let with_allowance = reduced_tax.add(benefit)?;
 
     // § 31: whichever leaves the household better off. The comparison is between total
@@ -184,6 +208,7 @@ pub fn assess(
         child_relief,
         withheld,
         refund: withheld.sub(total_liability)?,
+        progression_applies: !income.wage_replacement_benefits.is_zero(),
         // See the field documentation: § 10's interaction is not yet reconciled against a
         // real Steuerbescheid, so no assessment from this crate claims to be exact.
         is_exact: false,
@@ -265,9 +290,17 @@ mod tests {
             },
             church_tax_paid: Money::ZERO,
             other_special_expenses: Money::ZERO,
+            wage_replacement_benefits: Money::ZERO,
             children: 0,
         };
         taxable_income(&employee, &law().deductions).expect("computes")
+    }
+
+    /// The same, but with tax-free wage-replacement benefits alongside.
+    fn income_with_benefits(einkommen: i64, benefits: i64) -> crate::taxable_income::TaxableIncome {
+        let mut income = income_of(einkommen);
+        income.wage_replacement_benefits = euro(benefits);
+        income
     }
 
     // ---------------------------------------------------------------------
@@ -654,5 +687,151 @@ mod tests {
             previous = a.total_liability;
             einkommen = einkommen.saturating_add(3_100);
         }
+    }
+
+    // ---------------------------------------------------------------------
+    // § 32b, as the assessment applies it
+    // ---------------------------------------------------------------------
+
+    /// Benefits must raise the assessed tax without being taxed themselves, and the
+    /// assessment must say that it happened.
+    #[test]
+    fn wage_replacement_benefits_raise_the_assessed_tax() {
+        let plain = assess(
+            &income_of(40_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            Money::ZERO,
+            &law(),
+        )
+        .expect("assesses");
+        let with_benefits = assess(
+            &income_with_benefits(40_000, 10_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            Money::ZERO,
+            &law(),
+        )
+        .expect("assesses");
+
+        assert!(!plain.progression_applies);
+        assert!(with_benefits.progression_applies);
+        assert!(with_benefits.income_tax > plain.income_tax);
+        // The taxable income is untouched: only the rate moved.
+        assert_eq!(with_benefits.taxable_income, plain.taxable_income);
+    }
+
+    /// The § 31 Günstigerprüfung must compare progression-adjusted figures on **both** sides.
+    ///
+    /// This is the interaction that would be easy to get wrong, and it matters: a family on
+    /// parental leave is precisely a family with both children and § 32b benefits. Comparing
+    /// a progression-adjusted tax against a plain one would systematically misjudge the
+    /// crossover for exactly them.
+    ///
+    /// Tested by monotonicity, which is the property an inconsistent comparison would break:
+    /// more benefit can only ever raise the burden. If one branch carried the rate increase
+    /// and the other did not, a rising benefit would at some point make the *unadjusted*
+    /// branch look cheaper, the Günstigerprüfung would switch to it, and the total would
+    /// fall — a household paying less tax because it received more untaxed money.
+    #[test]
+    fn more_benefit_never_lowers_the_burden() {
+        for einkommen in [30_000_i64, 50_000, 70_000, 90_000, 120_000] {
+            for children in [0_u16, 10, 20] {
+                let mut previous = Money::ZERO;
+                for benefits in [0_i64, 2_000, 5_000, 15_000, 30_000, 60_000] {
+                    let result = assess(
+                        &income_with_benefits(einkommen, benefits),
+                        FilingStatus::JointSplitting,
+                        None,
+                        children,
+                        Money::ZERO,
+                        &law(),
+                    )
+                    .expect("assesses");
+
+                    assert!(
+                        result.total_liability >= previous,
+                        "at {einkommen} with {children} tenths, raising the benefit to \
+                         {benefits} lowered the burden from {previous:?} to {:?}",
+                        result.total_liability
+                    );
+                    previous = result.total_liability;
+
+                    // And where the allowance won, it genuinely was the better option.
+                    if let ChildRelief::Allowance { advantage, .. } = result.child_relief {
+                        assert!(
+                            !advantage.is_negative(),
+                            "the allowance won at {einkommen}/{benefits} but was worse"
+                        );
+                    }
+                }
+            }
+        }
+    }
+
+    /// Benefits large enough to matter must change the assessment by an amount a household
+    /// would notice, or the provision would not be worth modelling.
+    #[test]
+    fn the_cost_of_progression_is_material() {
+        let plain = assess(
+            &income_of(45_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            Money::ZERO,
+            &law(),
+        )
+        .expect("assesses");
+        let with_benefits = assess(
+            &income_with_benefits(45_000, 18_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            Money::ZERO,
+            &law(),
+        )
+        .expect("assesses");
+
+        let cost = with_benefits
+            .income_tax
+            .sub(plain.income_tax)
+            .expect("in domain");
+        assert!(
+            cost > euro(1_000),
+            "18 000 EUR of Elterngeld should cost over 1 000 EUR in extra tax, not {cost:?}"
+        );
+    }
+
+    /// And it must show up as a demand rather than being silently absorbed: a household that
+    /// had ordinary withholding all year now owes money.
+    #[test]
+    fn progression_turns_a_neutral_year_into_a_demand() {
+        let withheld = assess(
+            &income_of(45_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            Money::ZERO,
+            &law(),
+        )
+        .expect("assesses")
+        .total_liability;
+
+        let with_benefits = assess(
+            &income_with_benefits(45_000, 18_000),
+            FilingStatus::Individual,
+            None,
+            0,
+            withheld,
+            &law(),
+        )
+        .expect("assesses");
+
+        assert!(
+            with_benefits.refund.is_negative(),
+            "a year with Elterngeld should end in a demand, not a refund"
+        );
     }
 }
