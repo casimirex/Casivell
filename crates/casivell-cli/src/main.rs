@@ -39,6 +39,7 @@ mod law_report;
 mod project_report;
 mod property_report;
 mod report;
+mod scenario;
 
 use std::process::ExitCode;
 
@@ -46,8 +47,8 @@ use casivell_core::{Money, TaxYear};
 use casivell_income::{
     AssessmentLaw, Contributions, Employee, assess, capital_income_tax, taxable_income,
 };
-use casivell_lawdata::PropertyCostParameters;
 use casivell_lawdata::{DeductionParameters, ExtraordinaryBurdenParameters, SocialParameters};
+use casivell_lawdata::{LawYear, PropertyCostParameters};
 use casivell_payroll::{Employment, HealthCover, PayPeriod, PayrollLaw, compare_classes, net_pay};
 use casivell_projection::resolve;
 use casivell_property::{MortgageTerms, amortise, purchase_costs};
@@ -129,11 +130,17 @@ LAW OPTIONS
       --inflation <p>     Annual price inflation for projection (default 2,0)
       --wage-growth <p>   Annual wage growth for projection (default 2,8)
 
+SCENARIOS
+  --save <file>         Write this invocation and the statutory Datenstand
+  casivell replay <file>  Re-run it, warning if the law has changed since
+
 EXAMPLES
   casivell --gross 4500 --class 1
   casivell assess --gross 5000 --class 1 --children 1 --capital 3000
   casivell property --price 400000 --state NW --deposit 80000 --rate 3,5
   casivell classes --gross 5000 --partner 1800 --class 4
+  casivell project --gross 6000 --class 1 --expenses 1500 --save plan.casivell
+  casivell replay plan.casivell
   casivell law --year 2026
   casivell law --year 2060 --inflation 3,0 --wage-growth 3,5
   casivell project --gross 4500 --class 1 --expenses 2500 --return 5,0 --real
@@ -160,12 +167,8 @@ fn main() -> ExitCode {
     }
 
     let outcome = match argv.first().map(String::as_str) {
-        Some("assess") => run_assess(argv.into_iter().skip(1).collect()),
-        Some("classes") => run_classes(argv.into_iter().skip(1).collect()),
-        Some("property") => run_property(argv.into_iter().skip(1).collect()),
-        Some("law") => run_law(argv.into_iter().skip(1).collect()),
-        Some("project") => run_project(argv.into_iter().skip(1).collect()),
-        _ => run(argv),
+        Some("replay") => run_replay(argv.get(1..).unwrap_or_default()),
+        _ => run_and_maybe_save(argv),
     };
 
     match outcome {
@@ -178,6 +181,110 @@ fn main() -> ExitCode {
             eprintln!("Run `casivell --help` for usage.");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Runs an invocation, saving it as a scenario if `--save` asked for one.
+///
+/// The flag is handled here rather than in each form's parser because it is not an input to
+/// any calculation: it says what to do with the invocation afterwards, and every form's
+/// arguments are equally saveable.
+fn run_and_maybe_save(argv: Vec<String>) -> Result<String, String> {
+    let (argv, save_to) = take_save_flag(argv)?;
+    let report = dispatch(argv.clone())?;
+
+    let Some(path) = save_to else {
+        return Ok(report);
+    };
+
+    let (form, args) = split_form(argv);
+    let law_year = law_year_of(&args);
+    let scenario = scenario::Scenario::capture(form, args, law_year)?;
+    std::fs::write(&path, scenario.to_text()).map_err(|e| format!("cannot write {path}: {e}"))?;
+
+    Ok(format!(
+        "{report}  Saved to {path}, pinned to {law_year} law.\n\n"
+    ))
+}
+
+/// Replays a saved scenario, warning first if the statutory data has moved under it.
+fn run_replay(argv: &[String]) -> Result<String, String> {
+    let path = argv
+        .first()
+        .ok_or("replay needs a file: casivell replay <file>")?;
+    let text = std::fs::read_to_string(path).map_err(|e| format!("cannot read {path}: {e}"))?;
+    let saved = scenario::Scenario::from_text(&text)?;
+
+    let mut argv = saved.args.clone();
+    if let Some(form) = saved.form.clone() {
+        argv.insert(0, form);
+    }
+    let report = dispatch(argv)?;
+
+    // The warning goes *before* the report. A caveat printed after several screens of figures
+    // is a caveat nobody reads, and this one changes what the figures mean.
+    match saved.check_law()? {
+        Some(warning) => Ok(format!("\n  ⚠ {warning}\n{report}")),
+        None => Ok(format!(
+            "{report}  Replayed against unchanged {} law ({}).\n\n",
+            saved.law_year, saved.fingerprint
+        )),
+    }
+}
+
+/// Routes an invocation to its form.
+fn dispatch(argv: Vec<String>) -> Result<String, String> {
+    match argv.first().map(String::as_str) {
+        Some("assess") => run_assess(argv.into_iter().skip(1).collect()),
+        Some("classes") => run_classes(argv.into_iter().skip(1).collect()),
+        Some("property") => run_property(argv.into_iter().skip(1).collect()),
+        Some("law") => run_law(argv.into_iter().skip(1).collect()),
+        Some("project") => run_project(argv.into_iter().skip(1).collect()),
+        _ => run(argv),
+    }
+}
+
+/// Removes `--save FILE` from the arguments, returning where to write.
+fn take_save_flag(argv: Vec<String>) -> Result<(Vec<String>, Option<String>), String> {
+    let mut kept = Vec::with_capacity(argv.len());
+    let mut path = None;
+    let mut iter = argv.into_iter();
+    while let Some(arg) = iter.next() {
+        if arg == "--save" {
+            path = Some(iter.next().ok_or("--save needs a file name")?);
+        } else {
+            kept.push(arg);
+        }
+    }
+    Ok((kept, path))
+}
+
+/// Splits a sub-command off the front of an invocation, if there is one.
+fn split_form(argv: Vec<String>) -> (Option<String>, Vec<String>) {
+    const FORMS: [&str; 5] = ["assess", "classes", "property", "law", "project"];
+    match argv.split_first() {
+        Some((first, rest)) if FORMS.contains(&first.as_str()) => {
+            (Some(first.clone()), rest.to_vec())
+        }
+        _ => (None, argv),
+    }
+}
+
+/// The enacted year a scenario pins itself to.
+///
+/// A `--year` in the arguments if it names an enacted one, and the last enacted year
+/// otherwise. A projection is anchored to the enacted data it was projected *from*, since
+/// that plus the assumptions in the arguments determines every later year.
+fn law_year_of(args: &[String]) -> u16 {
+    let requested = args
+        .windows(2)
+        .find(|pair| pair.first().is_some_and(|flag| flag == "--year"))
+        .and_then(|pair| pair.get(1))
+        .and_then(|value| value.parse::<u16>().ok());
+
+    match requested {
+        Some(year) if TaxYear::new(year).is_ok_and(|y| LawYear::for_year(y).is_ok()) => year,
+        _ => TaxYear::LAST_VERIFIED.get(),
     }
 }
 

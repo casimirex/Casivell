@@ -425,8 +425,24 @@ this computed against?**
 - [x] **A projected year's digest follows its assumptions.** Two households projecting 2040 at
       different inflation rates are working from *different data*, and the digest says so. An
       enacted year's does not move, because no assumption enters it.
-- [ ] Writing and reading a scenario file, with a schema version and the digest inside it.
+- [x] **A scenario file**, with a schema version and the digest inside it. `--save FILE` on
+      any form; `casivell replay FILE` re-runs it and says whether the law has moved.
 - [ ] The scenario DAG: variants branching off a base.
+
+**A scenario is an invocation plus a Datenstand, not a serialised struct.** The obvious design
+is to serialise the household, the config and the schedule. That design drifts: every field
+added to `Household` is one someone must remember to write, read, version and default, and the
+failure is silent — an old file loads, a setting is quietly missing, the numbers are subtly
+wrong. Storing the *arguments* instead makes replay exact by construction, because there is no
+second representation to disagree with the first, and a new field on `Household` needs nothing
+in the format at all.
+
+Refusals are deliberate throughout: a file from a newer schema is refused rather than
+half-read, an unknown key is refused rather than skipped, and a missing field is named rather
+than defaulted. A defaulted scenario computes something nobody asked for. A *changed digest*,
+by contrast, is a warning and not an error — the household still wants its numbers, it just
+needs to know they are not the numbers it saved. The warning prints **before** the report,
+because a caveat after several screens of figures is a caveat nobody reads.
 
 **The maintenance hazard, and what guards it.** A field added to a parameter set and not added
 to its digest would be invisible — scenarios would claim a reproducibility they no longer have.
