@@ -156,8 +156,22 @@ build never silently swaps figures under a reader mid-calculation.
 The web UI covers three forms — Brutto-Netto, Steuerklassen and household
 projection — in German and English. Every figure name that appears on a German
 payslip stays German even in English mode, so the result can be checked against the
-document it came from. See the [walkthrough](docs/walkthrough/index.html) and the
-new [ebook](docs/ebook/index.html) for screenshots and worked examples.
+document it came from.
+
+#### Screenshots
+
+These captures are from the running React build. Click any image to open the
+walkthrough with full captions.
+
+<a href="docs/walkthrough/index.html">
+  <img src="docs/walkthrough/screens/01-payslip.png" width="100%" alt="English payslip: 5.500 € gross → 3.382,50 € net in tax class I, Nordrhein-Westfalen.">
+</a>
+
+| Payslip (de) | Tax classes | Projection | Explain | Narrow viewport |
+|---|---|---|---|---|
+| <img src="docs/walkthrough/screens/02-payslip-de.png" width="160" alt="German payslip with identical figures."> | <img src="docs/walkthrough/screens/03-classes.png" width="160" alt="Tax class comparison for 5.500 € and 1.800 € salaries."> | <img src="docs/walkthrough/screens/04-projection.png" width="160" alt="Forty-year wealth projection with dashed projected segment."> | <img src="docs/walkthrough/screens/05-explain.png" width="160" alt="§ 39b explanation panel."> | <img src="docs/walkthrough/screens/06-narrow.png" width="90" alt="Page at 375 px viewport."> |
+
+See the full [walkthrough](docs/walkthrough/index.html) and the [ebook](docs/ebook/index.html) for more worked examples.
 
 ---
 
