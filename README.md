@@ -70,6 +70,27 @@ Zero third-party dependencies throughout.
 
 ## Try it
 
+### Quick start with Make
+
+A `Makefile` wires the Rust backend and the React frontend together. From the
+repository root:
+
+```sh
+make start          # build backend, install npm deps, copy wasm, start Vite dev
+```
+
+Other useful targets:
+
+```sh
+make backend        # build the Rust workspace and WASM artifact (release)
+make backend-cli    # run a sample payslip through the CLI
+make frontend       # install deps, copy wasm, start the dev server
+make frontend-build # type-check and bundle for production
+make wasm-build     # rebuild WASM from Rust and copy it into web-react/public/
+make check          # run the same checks as CI
+make help           # list all targets
+```
+
 ### Command line
 
 ```sh
