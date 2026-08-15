@@ -1,0 +1,834 @@
+<!doctype html>
+<html lang="en" data-theme="system">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Casivell: from novice to professional — a complete guide to the local-first German payroll, tax and pension simulator.">
+<title>Casivell — From Novice to Professional</title>
+<style>
+  :root {
+    color-scheme: light dark;
+    --bg: #fff;
+    --text: #111;
+    --muted: #555;
+    --line: #d4d4d4;
+    --soft: #f4f4f4;
+    --accent: #2563eb;
+    --accent-text: #fff;
+    --success: #15803d;
+    --warning: #b45309;
+    --danger: #b91c1c;
+    --radius: .5rem;
+    --shadow: 0 1px 2px rgba(0,0,0,.06), 0 4px 12px rgba(0,0,0,.08);
+    --font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1115;
+      --text: #e8eaed;
+      --muted: #9aa0a6;
+      --line: #30363d;
+      --soft: #161b22;
+      --accent: #58a6ff;
+      --accent-text: #0f1115;
+      --success: #3fb950;
+      --warning: #f0883e;
+      --danger: #f85149;
+      --shadow: 0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1115;
+    --text: #e8eaed;
+    --muted: #9aa0a6;
+    --line: #30363d;
+    --soft: #161b22;
+    --accent: #58a6ff;
+    --accent-text: #0f1115;
+    --success: #3fb950;
+    --warning: #f0883e;
+    --danger: #f85149;
+    --shadow: 0 1px 2px rgba(0,0,0,.2), 0 4px 12px rgba(0,0,0,.35);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 16px/1.7 var(--font);
+    background: var(--bg);
+    color: var(--text);
+  }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+
+  /* Layout */
+  .page {
+    max-width: 52rem;
+    margin: 0 auto;
+    padding: 2.5rem 1.25rem 5rem;
+  }
+  header.cover {
+    text-align: center;
+    padding: 4rem 1rem 3rem;
+    border-bottom: 1px solid var(--line);
+  }
+  header.cover h1 {
+    font-size: clamp(2.2rem, 6vw, 3.4rem);
+    line-height: 1.1;
+    margin: 0 0 .75rem;
+    letter-spacing: -.02em;
+  }
+  header.cover .subtitle {
+    font-size: 1.25rem;
+    color: var(--muted);
+    margin: 0 0 1.5rem;
+  }
+  header.cover .meta {
+    font-size: .9rem;
+    color: var(--muted);
+  }
+
+  /* Controls */
+  .controls {
+    position: sticky;
+    top: 0;
+    z-index: 10;
+    background: var(--bg);
+    border-bottom: 1px solid var(--line);
+    padding: .5rem 1.25rem;
+    display: flex;
+    gap: .75rem;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .controls .links { display: flex; gap: .6rem; flex-wrap: wrap; align-items: center; }
+  .controls a, .controls button {
+    font: inherit;
+    font-size: .85rem;
+    padding: .35rem .65rem;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    background: var(--soft);
+    color: var(--text);
+    cursor: pointer;
+  }
+  .controls a:hover, .controls button:hover { border-color: var(--accent); }
+  .controls button.active { background: var(--accent); color: var(--accent-text); border-color: var(--accent); }
+
+  /* TOC */
+  nav.toc {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.25rem;
+    margin: 2rem 0;
+  }
+  nav.toc h2 {
+    font-size: 1rem;
+    margin: 0 0 1rem;
+  }
+  nav.toc ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    columns: 2;
+    column-gap: 1.5rem;
+  }
+  nav.toc li { margin-bottom: .5rem; font-size: .92rem; }
+  nav.toc a { display: block; }
+  @media (max-width: 30rem) { nav.toc ul { columns: 1; } }
+
+  /* Headings */
+  h2 {
+    font-size: 1.7rem;
+    margin: 3.5rem 0 1rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    letter-spacing: -.01em;
+  }
+  h3 { font-size: 1.25rem; margin: 2rem 0 .75rem; }
+  h4 { font-size: 1.05rem; margin: 1.5rem 0 .5rem; color: var(--muted); }
+  section { scroll-margin-top: 3.5rem; }
+
+  /* Typography */
+  p, ul, ol { margin: 0 0 1rem; }
+  .lede { font-size: 1.15rem; color: var(--muted); margin-bottom: 1.75rem; }
+  strong { color: var(--text); }
+
+  /* Cards & grids */
+  .grid {
+    display: grid;
+    gap: 1rem;
+    margin: 1.25rem 0;
+  }
+  .grid.two { grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr)); }
+  .grid.three { grid-template-columns: repeat(auto-fit, minmax(min(14rem, 100%), 1fr)); }
+  .card {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1.1rem;
+    box-shadow: var(--shadow);
+  }
+  .card h3, .card h4 { margin: 0 0 .4rem; }
+  .card p { margin: 0; font-size: .95rem; color: var(--muted); }
+
+  /* Figures */
+  figure {
+    margin: 1.5rem 0 2rem;
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: .75rem;
+    box-shadow: var(--shadow);
+  }
+  figure img {
+    width: 100%;
+    height: auto;
+    display: block;
+    border: 1px solid var(--line);
+    border-radius: calc(var(--radius) / 2);
+  }
+  figure.narrow { max-width: 28rem; margin-left: auto; margin-right: auto; }
+  figcaption {
+    font-size: .85rem;
+    color: var(--muted);
+    margin-top: .6rem;
+    line-height: 1.5;
+  }
+
+  /* Code */
+  pre {
+    background: var(--soft);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 1rem 1.1rem;
+    overflow-x: auto;
+    font-size: .82rem;
+    line-height: 1.55;
+    font-family: var(--mono);
+  }
+  code {
+    font-family: var(--mono);
+    font-size: .9em;
+    background: var(--soft);
+    padding: .1em .25em;
+    border-radius: .2rem;
+  }
+  pre code { background: none; padding: 0; }
+
+  /* Callouts */
+  .note, .warn, .success, .danger {
+    border-left: 4px solid var(--accent);
+    background: var(--soft);
+    padding: .9rem 1.1rem;
+    border-radius: 0 var(--radius) var(--radius) 0;
+    margin: 1.25rem 0;
+    font-size: .95rem;
+  }
+  .warn { border-left-color: var(--warning); }
+  .success { border-left-color: var(--success); }
+  .danger { border-left-color: var(--danger); }
+
+  /* Tables */
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 1.25rem 0;
+    font-size: .92rem;
+  }
+  th, td {
+    text-align: left;
+    padding: .5rem .6rem;
+    border-bottom: 1px solid var(--line);
+    vertical-align: top;
+  }
+  th { color: var(--muted); font-weight: 600; }
+
+  /* Lists */
+  ol.steps { counter-reset: step; list-style: none; padding-left: 0; }
+  ol.steps li { counter-increment: step; margin-bottom: 1rem; padding-left: 2rem; position: relative; }
+  ol.steps li::before {
+    content: counter(step);
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 1.5rem;
+    height: 1.5rem;
+    line-height: 1.5rem;
+    text-align: center;
+    background: var(--accent);
+    color: var(--accent-text);
+    border-radius: 50%;
+    font-size: .8rem;
+    font-weight: 700;
+  }
+
+  /* Footer */
+  footer.book {
+    margin-top: 4rem;
+    padding-top: 1.5rem;
+    border-top: 1px solid var(--line);
+    font-size: .85rem;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  /* Print */
+  @media print {
+    :root { color-scheme: light; --bg: #fff; --text: #111; --muted: #555; --line: #d4d4d4; --soft: #f4f4f4; --accent: #2563eb; --accent-text: #fff; }
+    html, body { background: #fff; color: #111; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .controls, .theme { display: none; }
+    .page { max-width: none; padding: 0; }
+    body { font-size: 10.5pt; line-height: 1.5; }
+    h1 { font-size: 24pt; }
+    h2 { font-size: 15pt; break-after: avoid; margin-top: 2rem; padding-top: 1rem; }
+    h3 { font-size: 12pt; break-after: avoid; }
+    section { break-inside: auto; }
+    figure, .card, .note, .warn, table, li { break-inside: avoid; }
+    figure img { max-height: 18cm; object-fit: contain; object-position: top; }
+    figure.narrow { max-width: 11cm; }
+    pre { font-size: 7.5pt; line-height: 1.45; break-inside: avoid; }
+    a { text-decoration: none; color: #111; }
+    nav.toc { columns: 2; }
+    footer.book { break-inside: avoid; }
+  }
+  @page { size: A4; margin: 16mm 15mm 18mm; }
+</style>
+</head>
+<body>
+
+<header class="cover">
+  <h1>Casivell</h1>
+  <p class="subtitle">From Novice to Professional</p>
+  <p class="meta">A local-first financial simulator for German households · Version 0.2.0 · 2026</p>
+</header>
+
+<div class="controls">
+  <div class="links">
+    <a href="../walkthrough/index.html">Walkthrough</a>
+    <a href="../../README.md">README</a>
+    <a href="../../ROADMAP.md">Roadmap</a>
+  </div>
+  <div class="theme">
+    <button type="button" data-theme="light">Light</button>
+    <button type="button" data-theme="dark">Dark</button>
+    <button type="button" data-theme="system" class="active">System</button>
+  </div>
+</div>
+
+<main class="page">
+
+<section id="start">
+<h2>Start here</h2>
+<p class="lede">Casivell is a payroll, tax and household simulator for Germany. It runs entirely on your device, uses exact integer arithmetic, and traces every figure back to the statute that produced it.</p>
+
+<div class="grid three">
+  <div class="card"><h3>Correct</h3><p>Every statutory figure cites its provision and primary source. Calculations use integer cents and rates in parts-per-million.</p></div>
+  <div class="card"><h3>Local-first</h3><p>No network code path. In the browser it is a WebAssembly module; on the command line it is a single binary.</p></div>
+  <div class="card"><h3>Explainable</h3><p>Every result names the rule behind it. A number you cannot check is a number asking for trust it has not earned.</p></div>
+</div>
+
+<p>This book takes you from the first payslip to the engineering that keeps the numbers honest. No Rust knowledge is required for the first half; the second half is for contributors and auditors who want to understand how the engine is built and verified.</p>
+</section>
+
+<nav class="toc" aria-label="Contents">
+<h2>Contents</h2>
+<ul>
+  <li><a href="#part1">Part I — The beginner's tour</a></li>
+  <li><a href="#what">1 · What Casivell computes</a></li>
+  <li><a href="#concepts">2 · The five concepts you need</a></li>
+  <li><a href="#browser">3 · The browser interface</a></li>
+  <li><a href="#languages">4 · German and English</a></li>
+  <li><a href="#explain">5 · Explainability</a></li>
+  <li><a href="#part2">Part II — Using it well</a></li>
+  <li><a href="#cli">6 · The command line</a></li>
+  <li><a href="#projection">7 · Household projections</a></li>
+  <li><a href="#scenarios">8 · Saving and comparing scenarios</a></li>
+  <li><a href="#part3">Part III — Under the hood</a></li>
+  <li><a href="#architecture">9 · Architecture and trust boundaries</a></li>
+  <li><a href="#verification">10 · How the numbers are checked</a></li>
+  <li><a href="#engineering">11 · Engineering discipline</a></li>
+  <li><a href="#limitations">12 · What it will not do</a></li>
+  <li><a href="#next">13 · From novice to professional</a></li>
+</ul>
+</nav>
+
+<section id="part1">
+<h2>Part I — The beginner's tour</h2>
+<p>This part is for anyone who wants to use Casivell. It assumes you know what a payslip looks like and nothing else.</p>
+</section>
+
+<section id="what">
+<h2>1 · What Casivell computes</h2>
+<p>Casivell answers the questions German households actually face: <em>what is my net pay?</em>, <em>which tax class should we choose?</em>, <em>what does part-time cost over a lifetime?</em>, and <em>can we afford to buy a home?</em></p>
+
+<p>It does this by running German statute through a precise simulation engine. The engine handles:</p>
+<ul>
+  <li><strong>Payroll withholding</strong> — monthly or yearly net pay from gross, using the BMF Programmablaufplan for Lohnsteuer and the current social-insurance rates.</li>
+  <li><strong>Annual assessment</strong> — the § 2 EStG path that produces a Steuerbescheid, with Werbungskosten, Sonderausgaben and außergewöhnliche Belastungen.</li>
+  <li><strong>Tax-class comparison</strong> — IV/IV, III/V and IV+Faktor for couples, showing that the annual tax is the same and only the timing differs.</li>
+  <li><strong>Capital income</strong> — § 32d flat tax and the Abs. 6 election.</li>
+  <li><strong>Household projection</strong> — decades of payroll, savings, life events and pension accrual, month by month.</li>
+  <li><strong>Property purchase</strong> — Kaufnebenkosten, Grunderwerbsteuer and an annuity mortgage.</li>
+</ul>
+
+<p>Two front ends call the same engine: a React + Vite browser app in <code>web-react/</code> and a command-line tool in <code>crates/casivell-cli</code>. Both produce the same figures to the cent.</p>
+</section>
+
+<section id="concepts">
+<h2>2 · The five concepts you need</h2>
+
+<h3>2.1 · Money is integer cents</h3>
+<p>Inside Casivell there are no floating-point euro amounts. A euro is 100 cents, stored as an integer. This eliminates the rounding drift that makes a long projection subtly wrong. The web UI still shows <code>2.871,09 €</code>, but the conversion to text happens at the boundary, never in the calculation.</p>
+
+<div class="note"><strong>Why this matters.</strong> A cent of drift every month becomes 4,80 € after forty years. More importantly, the German statute itself rounds at named points; doing that with floats makes it possible to round the wrong thing.</div>
+
+<h3>2.2 · Rates are parts-per-million</h3>
+<p>A rate like 9,3 % is stored as 93 000 ppm. Multiplying a cent amount by a ppm rate and dividing by 1 000 000 is exact integer arithmetic, with a named rounding rule at the end.</p>
+
+<h3>2.3 · Tax classes are about timing, not total tax</h3>
+<p>Germany has six Lohnsteuerklassen. For a single person the class is fixed. For married couples there are three arrangements — IV/IV, III/V and IV with Faktor — and the annual income tax is the same under all of them. The choice changes how much is withheld each month and whether you get a refund or owe money at assessment.</p>
+
+<h3>2.4 · Social insurance has four branches</h3>
+<p>A German payslip deducts four employee shares:</p>
+<ul>
+  <li><strong>Rentenversicherung</strong> — pension.</li>
+  <li><strong>Arbeitslosenversicherung</strong> — unemployment.</li>
+  <li><strong>Krankenversicherung</strong> — health, including the fund-specific Zusatzbeitrag.</li>
+  <li><strong>Pflegeversicherung</strong> — care, with a childless surcharge and per-child reductions.</li>
+</ul>
+<p>Each has its own contribution ceiling, rate and incidence rules.</p>
+
+<h3>2.5 · Enacted law ends; assumptions begin</h3>
+<p>Casivell contains the statutory parameters for 2025 and 2026. Past that, the engine projects from explicit assumptions — inflation, wage growth, investment return — and labels the result <strong>PROJECTED</strong>. It never silently pretends a future year is already law.</p>
+</section>
+
+<section id="browser">
+<h2>3 · The browser interface</h2>
+<p>Open <code>web-react/dist/index.html</code> after a build, or run <code>npm run dev</code>. The page has three tabs: a payslip, a tax-class comparison and a projection. There is no submit button and no network request; results update as you type.</p>
+
+<figure>
+  <img src="../walkthrough/screens/01-payslip.png" alt="The Casivell browser page in English, showing a gross-to-net calculation for 5.500 € a month in tax class I in Nordrhein-Westfalen.">
+  <figcaption><strong>Gross to net.</strong> 5.500 € → 3.382,50 € for a childless 30-year-old in class I. Every deduction row can be opened to show the rule behind it.</figcaption>
+</figure>
+
+<h3>3.1 · The three forms</h3>
+<table>
+  <thead><tr><th>Tab</th><th>Question it answers</th><th>Headline figure</th></tr></thead>
+  <tbody>
+    <tr><td>Brutto-Netto</td><td>What will my payslip show this month?</td><td>Net pay</td></tr>
+    <tr><td>Steuerklassen</td><td>How do IV/IV, III/V and IV+Faktor compare for a couple?</td><td>Annual income tax</td></tr>
+    <tr><td>Projektion</td><td>Where does this household end up in forty years?</td><td>Final wealth</td></tr>
+  </tbody>
+</table>
+
+<h3>3.2 · UI/UX details that matter</h3>
+<ul>
+  <li><strong>Hero cards</strong> surface the headline number immediately.</li>
+  <li><strong>Animated numbers</strong> interpolate when inputs change, making the connection visible.</li>
+  <li><strong>Input adornments</strong> (€, %) remove ambiguity about units.</li>
+  <li><strong>Theme and language selectors</strong> persist your choice in <code>localStorage</code>.</li>
+  <li><strong>Reduced-motion</strong> media query disables animations for users who prefer it.</li>
+</ul>
+<p>All of this is built with CSS custom properties and a few tiny hooks — no UI library, no chart dependency.</p>
+</section>
+
+<section id="languages">
+<h2>4 · German and English</h2>
+<p>The page can be switched between German and English via the header, or by adding <code>?lang=de</code> or <code>?lang=en</code> to the URL. German is the fallback.</p>
+
+<div class="grid two">
+  <figure><img src="../walkthrough/screens/01-payslip.png" alt="The page in English."><figcaption>English — <code>?lang=en</code></figcaption></figure>
+  <figure><img src="../walkthrough/screens/02-payslip-de.png" alt="The same page in German; the figures are identical."><figcaption>Deutsch — <code>?lang=de</code></figcaption></figure>
+</div>
+
+<p>Notice that the statutory terms stay German in both languages. <em>Lohnsteuer</em>, <em>Sozialabgaben</em> and <em>Nettolohn</em> are the words printed on a German payslip. Translating them would make the result harder to check against the document it came from. The chrome and explanations change; the figure names do not.</p>
+
+<figure class="narrow">
+  <img src="../walkthrough/screens/06-narrow.png" alt="The page at a narrow 375 px viewport, collapsed to a single column.">
+  <figcaption><strong>Narrow viewport.</strong> The form collapses to a single column; tables scroll inside their own box instead of pushing the page sideways.</figcaption>
+</figure>
+</section>
+
+<section id="explain">
+<h2>5 · Explainability</h2>
+<p>Selecting a deduction row opens the provision behind it. For Lohnsteuer this is the full § 39b chain in the BMF Programmablaufplan's own variable names.</p>
+
+<figure>
+  <img src="../walkthrough/screens/05-explain.png" alt="The explanation panel for Lohnsteuer, citing § 39b EStG and the BMF Programmablaufplan.">
+  <figcaption><strong>The § 39b chain.</strong> Not one of these numbers is recomputed in JavaScript — that would be a second thing to be wrong.</figcaption>
+</figure>
+
+<p>The same chain appears in the CLI output, so the browser and the terminal agree line for line. This is not a nicety; it is the project's definition of correctness. If two paths through different statutes do not agree, one of them is wrong.</p>
+</section>
+
+<section id="part2">
+<h2>Part II — Using it well</h2>
+<p>This part is for users who want the command line, projections and saved scenarios. It assumes you have built the workspace once.</p>
+</section>
+
+<section id="cli">
+<h2>6 · The command line</h2>
+<p>The CLI is the <code>casivell</code> command, produced by <code>cargo build -p casivell-cli</code>. It exposes every form the engine has. The quickest way to try it is:</p>
+<pre>$ cargo run -p casivell-cli -- --gross 4500 --class 1</pre>
+
+<h3>6.1 · A payslip</h3>
+<pre>$ cargo run -p casivell-cli -- --gross 5500 --class 1 --state NW
+
+Casivell — Lohnabrechnung
+  2026 · Steuerklasse I · NW · monthly
+
+  Bruttoentgelt                                     5.500,00 €
+
+  Steuern
+    Lohnsteuer                                       -921,25 €
+    Solidaritätszuschlag                                0,00 €
+
+  Sozialversicherung (Arbeitnehmeranteil)
+    Rentenversicherung          9,30 %               -511,50 €
+    Arbeitslosenversicherung    1,30 %                -71,50 €
+    Krankenversicherung         8,75 %               -481,25 €
+    Pflegeversicherung          2,40 %               -132,00 €
+    Summe                                          -1.196,25 €
+
+  ────────────────────────────────────────────────────────────
+  Nettoentgelt                                      3.382,50 €
+  (61,50 % of gross)
+
+  Wie die Lohnsteuer ermittelt wurde (§ 39b EStG, BMF-PAP 2026)
+    Jahresarbeitslohn (ZRE4)                       66.000,00 €
+    − Tabellenfreibeträge (ZTABFB)                 -1.266,00 €
+    − Vorsorgepauschale (VSP)                     -13.299,00 €
+    = zu versteuernder Betrag (ZVE)                51.435,00 €
+    Jahreslohnsteuer (LSTJAHR)                     11.055,00 €
+    ÷ 12 = Lohnsteuer im Monat                        921,25 €</pre>
+
+<p>Compare this with the browser screenshot in §3: the figures match to the cent. The CLI adds the § 39b working, which is also what the browser shows when you open the Lohnsteuer row.</p>
+
+<h3>6.2 · Tax classes</h3>
+<pre>$ cargo run -p casivell-cli -- classes --gross 5000 --partner 1800
+
+Casivell — Steuerklassenvergleich 2026
+  Two salaries: 5.000,00 € and 1.800,00 € a month
+
+  The annual income tax is 9.180,00 € under all three. The tax class decides
+  when it is paid and by which spouse — not how much.
+
+  Arrangement          Higher/mo   Lower/mo     Net/mo     At assessment
+  ──────────────────────────────────────────────────────────────────────
+  IV / IV                782,41      52,41   4.486,18     837,84 € back
+  III / V                401,83     230,91   4.688,26   1.587,12 € owed
+  IV + Faktor 0,916      716,66      48,00   4.556,34       4,08 € owed</pre>
+
+<p>The browser shows the same comparison in a table. III/V takes least home each month and owes most at the end; IV+Faktor lands within a few euros of zero.</p>
+
+<figure>
+  <img src="../walkthrough/screens/03-classes.png" alt="The tax class comparison for salaries of 5.500 € and 1.800 € a month.">
+  <figcaption><strong>Same tax, three ways of paying it.</strong> The annual income tax is identical; the choice is about cash flow and wage-replacement benefits.</figcaption>
+</figure>
+
+<h3>6.3 · Statutory parameters for a year</h3>
+<pre>$ cargo run -p casivell-cli -- law --year 2026
+
+Casivell — Rechengrößen 2026
+  ENACTED LAW — transcribed from primary sources.
+
+  Einkommensteuertarif (§ 32a EStG)
+    Grundfreibetrag                          12.348,00 €
+    Ende Zone 2                              17.799,00 €
+    Beginn 42 % (Spitzensteuersatz)          69.879,00 €
+    Beginn 45 % (Reichensteuer)             277.826,00 €
+
+  Sozialversicherung
+    BBG Renten-/Arbeitslosenvers. (Monat)     8.450,00 €
+    BBG Kranken-/Pflegevers. (Monat)          5.812,50 €
+    Durchschnittsentgelt (Jahr)              51.944,00 €
+    Bezugsgröße (Monat)                       3.955,00 €</pre>
+
+<h3>6.4 · Annual assessment</h3>
+<pre>$ cargo run -p casivell-cli -- assess --gross 5000 --class 1 --children 1 --capital 3000 --medical 4000 --disability 50
+
+Casivell — Jahresveranlagung 2026
+  Estimated, not a Steuerbescheid. See the notes.
+
+  Zu versteuerndes Einkommen (§ 2 EStG)
+    Bruttoarbeitslohn                               60.000,00
+    − Werbungskosten (§ 9, § 9a)                     1.230,00  Pauschbetrag
+    = Einkünfte (§ 19)                              58.770,00
+    = Gesamtbetrag der Einkünfte                    58.770,00
+    − Altersvorsorge (§ 10 Abs. 1 Nr. 2)             5.580,00
+    − Sonstige Vorsorge (§ 10 Abs. 1 Nr. 3)          6.154,80  Satz 4 override
+    − Übrige Sonderausgaben (§§ 10–10c)                 36,00  Pauschbetrag
+    − Außergewöhnliche Belastungen (§§ 33, 33b)      3.453,90
+    = Einkommen                                     43.545,30
+
+  Steuer
+    zu versteuerndes Einkommen                      43.545,30
+    Einkommensteuer (§ 32a)                          8.353,00
+    Solidaritätszuschlag                                 0,00
+    Kirchensteuer                                        0,00
+    = Gesamtbelastung                                8.353,00
+
+  Kinder (§ 31 Günstigerprüfung)
+    The Kindergeld of 3.108,00 € wins; the Kinderfreibetrag is not granted.
+
+  Abrechnung
+    Lohnsteuer einbehalten                           9.510,96
+    Erstattung                                       1.157,96  back</pre>
+</section>
+
+<section id="projection">
+<h2>7 · Household projections</h2>
+<p>A projection answers the lifetime questions. It runs the same payroll code month by month for decades, applies statutory parameters for each year, and records wealth, pension accrual and life events.</p>
+
+<figure>
+  <img src="../walkthrough/screens/04-projection.png" alt="The projection form showing a line chart of wealth from 2026 to 2065.">
+  <figcaption><strong>Forty years at 4 % return.</strong> The line is dashed throughout because only the 2026 year-end rests on enacted law; everything after is projected.</figcaption>
+</figure>
+
+<h3>7.1 · A simple projection</h3>
+<pre>$ cargo run -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 \
+    --pay-growth 2,8 --return 5,0 --real
+
+  Year   Gross/mo      Net/mo   Saved/mo        Wealth    Points   Pension/mo
+  ──────────────────────────────────────────────────────────────────────────
+  2026   4.500,00    2.871,09     371,09      4.556,58      1,04        44,20
+  ┈┈┈┈┈┈┈┈  enacted law ends here; rows below are projected
+  2027   4.535,29    2.889,65     389,65      9.480,25      2,08        89,10
+  ...
+  2065   6.102,90    3.677,94   1.177,95    637.114,68     41,58     2.397,65</pre>
+
+<h3>7.2 · Life events</h3>
+<p>Options include <code>--part-time</code>, <code>--break</code>, <code>--raise</code>, <code>--child-born</code>, and <code>--parental-leave</code>. Five years at 60 % pay pushes this household into deficit for six years and lowers pension points permanently, because Entgeltpunkte are a ratio to the national average wage. That is the <em>Teilzeitfalle</em> — the part-time trap — and showing it is the point.</p>
+
+<pre>$ cargo run -p casivell-cli -- project --gross 4000 --class 1 --children 1 \
+    --expenses 1800 --child-born 2 --parental-leave 2:14 --years 8
+
+  Life events
+  · 2028: a child is born; Kindererziehungszeit follows (§ 56 SGB VI)
+  · 2028 to 2029: parental leave, Basiselterngeld for 14 months
+
+  Year   Gross/mo      Net/mo  Elterngeld   Saved/mo     Settle        Wealth    Points   Pension/mo
+  ───────────────────────────────────────────────────────────────────────────────────────────────────
+  2026   4.000,00    2.622,17        0,00     822,17       0,00      9.866,04      0,92        39,29
+  ┈┈┈┈┈┈┈┈  enacted law ends here; rows below are projected
+  2027   4.000,00    2.631,25        0,00     795,25       0,96     19.410,00      1,82        79,68
+  2028       0,00        0,00    1.650,73    -221,99       1,00     16.747,12      2,74       123,07
+  2029   4.000,00    2.649,42    1.650,73     739,25       0,00     23.620,74      4,45       205,44</pre>
+
+<div class="warn"><strong>Projections are not predictions.</strong> They are a coherent set of consequences from explicit assumptions. The value is in seeing which levers matter, not in the last row.</div>
+</section>
+
+<section id="scenarios">
+<h2>8 · Saving and comparing scenarios</h2>
+<p>A saved scenario records the invocation and the fingerprint of the statutory data it was computed against. This lets you replay it later and know whether the law has changed underneath.</p>
+
+<pre>$ cat rent.casivell
+# Casivell scenario
+# Replay with: casivell replay &lt;this file&gt;. Editable by hand.
+schema = 1
+
+[invocation]
+form = project
+arg = --gross
+arg = 6000
+arg = --class
+arg = 1
+arg = --expenses
+arg = 1500
+arg = --return
+arg = 5,0
+arg = --years
+arg = 25
+
+[law]
+year = 2026
+fingerprint = e177cfbaa6bb7121</pre>
+
+<p>Replaying checks the fingerprint first:</p>
+<pre>$ cargo run -p casivell-cli -- replay rent.casivell
+  … projection output …
+  Replayed against unchanged 2026 law (e177cfbaa6bb7121).</pre>
+
+<p>If the data has moved, the warning comes first, because a caveat under several screens of numbers is one nobody reads. Two scenarios can also be compared directly:</p>
+
+<pre>$ cargo run -p casivell-cli -- compare rent.casivell buy.casivell
+
+Casivell — Szenarienvergleich
+  A  rent.casivell
+  B  buy.casivell
+
+  Was sich unterscheidet
+    only B:  --property-growth 2,0 --buy 3:400000:100000:NW:900
+
+  Ergebnis nach 25 Jahren                     A               B           B − A
+  ──────────────────────────────────────────────────────────────────────────────
+  Nettovermögen                   1.151.341,41    1.022.423,82     -128.917,59
+  Geldvermögen                    1.151.341,41      514.627,31     -636.714,10
+  Tiefster Stand                      2.141,58      -16.322,88      -18.464,46
+  Steuern einbehalten               270.597,96      270.597,96            0,00
+  Erstattungen                           48,00           48,00            0,00
+  Sozialabgaben                     391.198,92      391.198,92            0,00
+  Entgeltpunkte                          25,37           25,37            0,00
+  Hypothekenzinsen                        0,00      183.252,66      183.252,66</pre>
+
+<p>Tax, contributions and Entgeltpunkte come out identical to the cent — the check that the difference is the housing decision and nothing else. The buyer's lowest point is below zero, an outcome an end-state figure alone would hide.</p>
+</section>
+
+<section id="part3">
+<h2>Part III — Under the hood</h2>
+<p>This part is for engineers, auditors and contributors. It explains how the engine is layered, how its correctness is defended, and where its limits are.</p>
+</section>
+
+<section id="architecture">
+<h2>9 · Architecture and trust boundaries</h2>
+
+<h3>9.1 · Workspace layout</h3>
+<pre>crates/
+├── casivell-core/      Money (integer cents), Rate (integer ppm), named rounding
+├── casivell-lawdata/   Year-keyed statutory tables, each figure cited
+├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
+├── casivell-income/    § 2 EStG: gross → taxable income, the assessment, § 32d capital
+├── casivell-social/    Social insurance contributions, pension entitlement
+├── casivell-benefits/  Elterngeld (BEEG)
+├── casivell-property/  Grunderwerbsteuer, Kaufnebenkosten, annuity mortgage
+├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
+├── casivell-projection/ Statutory parameters past the last enacted year
+├── casivell-sim/       Month-by-month household projection, streaming
+├── casivell-cli/       The <code>casivell</code> command
+└── casivell-wasm/      A dependency-free C ABI, for the browser build in web/</pre>
+
+<p>The dependency direction is the design:</p>
+<ul>
+  <li><code>casivell-core</code> knows nothing of German law.</li>
+  <li><code>casivell-lawdata</code> holds law but performs no calculation.</li>
+  <li>Calculation crates hold no statutory constants.</li>
+</ul>
+
+<h3>9.2 · Why a hand-written C ABI for the browser</h3>
+<p>The engine compiles to WebAssembly. Instead of using <code>wasm-bindgen</code>, the project exposes a tiny C ABI manually. This keeps the workspace free of third-party dependencies: every line that computes a German tax figure is in the repository and reviewable, and the build has no supply chain.</p>
+
+<p>The ABI is intentionally narrow:</p>
+<ol class="steps">
+  <li>Call <code>casivell_payslip(...)</code> with the inputs. It returns 0 on success or a negative error code.</li>
+  <li>Call <code>casivell_result(field)</code> to read each figure out, in cents as <code>i64</code>.</li>
+</ol>
+
+<p>Because values are <code>i64</code>, JavaScript sees them as <code>BigInt</code>. The web app converts to a number for display, but the arithmetic stays in the engine.</p>
+
+<h3>9.3 · Local-first as architecture</h3>
+<p>Privacy is defended by verifiable measures, not proofs. The engine is <code>#![no_std]</code>, which has no way to open a socket. The browser build can use a CSP with <code>connect-src 'none'</code>. The WASM is reproducible from source. The user can open the developer tools and confirm no network request is made.</p>
+</section>
+
+<section id="verification">
+<h2>10 · How the numbers are checked</h2>
+
+<h3>10.1 · The BMF Prüftabellen</h3>
+<p>Lohnsteuer is checked against all 516 official values of the BMF Programmablaufplan's Prüftabellen — the reference tables German payroll products are validated against. These cover 43 salary levels across all six tax classes in two variants. Casivell matches every one exactly.</p>
+
+<h3>10.2 · Two statutes agreeing</h3>
+<p>Withholding under § 39b is designed to be right for a flat year. The annual assessment under § 2 should therefore return almost nothing on a flat year. The two paths share only the tariff; one runs the BMF Programmablaufplan with its simplified Vorsorgepauschale, the other § 2 EStG with the real § 10 deduction. They land within 96–332 cents of each other across a sixfold salary range. Nothing makes them agree except both being right.</p>
+
+<h3>10.3 · Derived, not invented</h3>
+<p>Projected tariff coefficients are derived from the enacted Eckwerte. The derivation reproduces all eight published coefficients for both 2025 and 2026 exactly. This is what makes a projected tariff credible rather than fabricated.</p>
+
+<h3>10.4 · Fingerprints and the Datenstand</h3>
+<p>Every year's statutory data has a stable FNV-1a fingerprint over the figures themselves. A saved scenario records this fingerprint, so a replay can warn if the law has moved. The browser footer shows the Datenstand — the statutory data version — so a cached build names the law it rests on.</p>
+
+<h3>10.5 · External references</h3>
+<p>An independent decimal implementation of § 32a in <code>docs/reference/</code> cross-checks the engine's integer algebra across the whole curve. The DRV "Standardrentner" figure — 45 Entgeltpunkte at the 1 July 2026 Rentenwert giving 1 913,40 € — also matches.</p>
+</section>
+
+<section id="engineering">
+<h2>11 · Engineering discipline</h2>
+<p>The engine follows the JPL "Power of Ten" coding standard, adapted to Rust.</p>
+
+<table>
+  <thead><tr><th>Constraint</th><th>Mechanism</th></tr></thead>
+  <tbody>
+    <tr><td>No heap allocation in the engine</td><td><code>#![no_std]</code> — no allocator</td></tr>
+    <tr><td>No unsafe code</td><td><code>#![forbid(unsafe_code)]</code></td></tr>
+    <tr><td>No panics in library code</td><td><code>unwrap</code>, <code>expect</code>, <code>panic</code>, indexing all denied</td></tr>
+    <tr><td>No unchecked arithmetic</td><td><code>clippy::arithmetic_side_effects</code> denied</td></tr>
+    <tr><td>No floating point</td><td><code>clippy::float_arithmetic</code> denied</td></tr>
+    <tr><td>Bounded functions</td><td>60-line limit, complexity limit</td></tr>
+    <tr><td>Zero warnings</td><td><code>clippy::pedantic</code> with <code>-D warnings</code> in CI</td></tr>
+  </tbody>
+</table>
+
+<p><code>Money</code> and <code>Rate</code> deliberately do not implement <code>Add</code>/<code>Sub</code>/<code>Mul</code>. Every operation is a named method returning <code>Result</code>. Call sites are more verbose, and that is the point: the surest way to have every return value checked is to leave no unchecked alternative.</p>
+
+<h3>11.1 · What the CI enforces</h3>
+<pre>$ cargo test --workspace
+$ cargo clippy --workspace --all-targets -- -D warnings
+$ cargo build --workspace --target wasm32-unknown-unknown --release
+$ python3 scripts/check_no_statutory_literals.py
+$ python3 docs/reference/generate_tariff_reference.py</pre>
+<p>Each step is reproducible on a laptop. A CI that cannot be run locally teaches people to push and pray.</p>
+</section>
+
+<section id="limitations">
+<h2>12 · What it will not do</h2>
+<p>The full account is in <code>docs/LIMITATIONS.md</code>. The most important limits are:</p>
+
+<ol class="steps">
+  <li><strong>A second earner is not modelled.</strong> If both spouses work, the annual assessment is refused rather than computed on half a household.</li>
+  <li><strong>Only employment and capital income.</strong> Business, self-employment, rental, agriculture and pensions in payment are absent.</li>
+  <li><strong>Nothing has been reconciled against a real Steuerbescheid.</strong> The internal evidence is strong; it is not the same thing.</li>
+  <li><strong>Minijob and Übergangsbereich contributions are wrong.</strong> The Midijob formula is not implemented.</li>
+  <li><strong>Weekly and daily pay periods are refused.</strong> Their scaling factors do not terminate in decimal.</li>
+</ol>
+
+<div class="danger"><strong>Not tax advice.</strong> Casivell is an information and simulation tool, not advice within the meaning of Steuerberatungsgesetz §§ 1–4. Where a real filing or decision is at stake, a Steuerberater is the answer.</div>
+</section>
+
+<section id="next">
+<h2>13 · From novice to professional</h2>
+<p>If you are new to the codebase, start in this order:</p>
+
+<ol class="steps">
+  <li>Run <code>cargo run -p casivell-cli -- --help</code> and try a payslip. Compare it with a real payslip if you can.</li>
+  <li>Open <code>web-react/dist/index.html</code> and click through the three forms. Open the explanation panel and read the § 39b chain.</li>
+  <li>Read <code>crates/casivell-core/src/lib.rs</code> to see how Money and Rate work. Notice they are integers, and operations return Result.</li>
+  <li>Read <code>crates/casivell-lawdata/src/lib.rs</code> to see the Provenance structure: provision, URL, verification date and status.</li>
+  <li>Read <code>docs/ROADMAP_ERRATA.md</code> to see what was wrong in the previous version and how the current checks prevent it.</li>
+  <li>Read <code>docs/CODING_STANDARD.md</code> for the full rules and their enforcement mechanisms.</li>
+  <li>Try adding a new year. The first failure will come from a test that checks the tariff zones join continuously — this is the design catching a mistranscription before a user sees it.</li>
+</ol>
+
+<p>The project's quality is not in any single clever algorithm. It is in the accumulation of small guards: integer money, cited data, named operations, no panics, no network, reproducible tests, and a LIMITATIONS file that is read before it is hidden. That is what makes a tax calculator worth trusting.</p>
+</section>
+
+<footer class="book">
+  <p>Casivell — a local-first financial simulator for German households.<br>
+  Engine licensed under Apache-2.0. See the repository for current source, tests and data.</p>
+</footer>
+
+</main>
+
+<script>
+  // Theme toggle
+  const html = document.documentElement;
+  const buttons = document.querySelectorAll('.theme button');
+  const saved = localStorage.getItem('casivell-ebook-theme');
+  if (saved && (saved === 'light' || saved === 'dark' || saved === 'system')) {
+    html.setAttribute('data-theme', saved);
+    buttons.forEach(b => b.classList.toggle('active', b.dataset.theme === saved));
+  }
+  buttons.forEach(btn => {
+    btn.addEventListener('click', () => {
+      const theme = btn.dataset.theme;
+      html.setAttribute('data-theme', theme);
+      localStorage.setItem('casivell-ebook-theme', theme);
+      buttons.forEach(b => b.classList.toggle('active', b === btn));
+    });
+  });
+</script>
+
+</body>
+</html>

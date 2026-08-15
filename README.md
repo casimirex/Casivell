@@ -10,10 +10,11 @@ can we afford a year off?*
 Your financial data stays on your device. There is no network code path below the
 UI layer.
 
-> **Status: early.** The engine is built and tested, statutory parameters can be projected
-> past the last enacted year, decades-long household projections run with life events, and
-> there is a working CLI. There is no graphical interface and no persistence yet — see
-> [ROADMAP.md](ROADMAP.md) for what exists and what comes next.
+> **Status:** The engine is built, tested and clippy-clean, statutory parameters
+> can be projected past the last enacted year, decades-long household projections
+> run with life events, and there is both a command-line tool and a React web
+> front end. Persistence is not implemented yet — see [ROADMAP.md](ROADMAP.md)
+> for what comes next.
 
 ---
 
@@ -44,32 +45,32 @@ crates/
 ├── casivell-tax/       § 32a EStG tariff, Solidaritätszuschlag, church tax
 ├── casivell-income/    § 2 EStG: gross → taxable income, the assessment, § 32d capital
 ├── casivell-social/    Social insurance contributions, pension entitlement
-├── casivell-benefits/  Elterngeld (BEEG) — above payroll, because § 2e uses the PAP
+├── casivell-benefits/  Elterngeld (BEEG)
 ├── casivell-property/  Grunderwerbsteuer, Kaufnebenkosten, the annuity mortgage
 ├── casivell-payroll/   Lohnsteuer (BMF Programmablaufplan), gross-to-net
 ├── casivell-projection/ Statutory parameters past the last enacted year
 ├── casivell-sim/       Month-by-month household projection, streaming
 ├── casivell-cli/       The `casivell` command
-└── casivell-wasm/      A dependency-free C ABI, for the browser build in `web/`
+└── casivell-wasm/      A dependency-free C ABI, for browser builds
 ```
 
-`casivell-cli` and `casivell-wasm` are the only crates that use `std`; every engine crate is
-`#![no_std]`. Every crate `#![forbid(unsafe_code)]` except `casivell-wasm`, which **denies** it
-— a `cdylib` export is spelled `#[unsafe(no_mangle)]` in Rust 2024 and `forbid` cannot be
-relaxed even at the site. There is no `unsafe` block anywhere in the workspace.
+`casivell-cli` and `casivell-wasm` are the only crates that use `std`; every engine
+crate is `#![no_std]`. Every crate `#![forbid(unsafe_code)]` except `casivell-wasm`,
+which **denies** it — a `cdylib` export is spelled `#[unsafe(no_mangle)]` in Rust 2024
+and `forbid` cannot be relaxed even at the site. There is no `unsafe` block anywhere in
+the workspace.
 
 The dependency direction is the design: `core` knows nothing of German law;
 `lawdata` holds law but performs no calculation; calculation crates hold no
 statutory constants. Each layer can be reviewed on its own.
 
-Every engine crate is `#![no_std]` and `#![forbid(unsafe_code)]`. `casivell-cli` is
-the only crate that uses `std`, and that boundary is what keeps the guarantee that
-the calculation layer cannot allocate or open a socket. Zero third-party
-dependencies, throughout.
+Zero third-party dependencies throughout.
 
 ---
 
 ## Try it
+
+### Command line
 
 ```sh
 cargo run -p casivell-cli -- --gross 4500 --class 1
@@ -107,6 +108,39 @@ Casivell — Lohnabrechnung
 
 Every figure is traceable to the rule that produced it, and the report states its
 own assumptions and limits. `--help` lists the options.
+
+### Browser
+
+A React + Vite + TypeScript front end calls the same WASM C ABI:
+
+```sh
+cd web-react
+npm install
+npm run copy-wasm   # copy the built WASM into public/
+npm run dev         # local development server
+```
+
+Or build and preview the production bundle:
+
+```sh
+npm run build       # type-check + bundle into dist/
+npm run preview     # serve dist/
+```
+
+`vite.config.ts` sets `base: "./"`, so `dist/` is relocatable. The build includes a
+hand-written service worker that serves the cached shell at once, revalidates in the
+background, and posts an update notice only when the new copy differs — so a cached
+build never silently swaps figures under a reader mid-calculation.
+
+The web UI covers three forms — Brutto-Netto, Steuerklassen and household
+projection — in German and English. Every figure name that appears on a German
+payslip stays German even in English mode, so the result can be checked against the
+document it came from. See the [walkthrough](docs/walkthrough/index.html) and the
+new [ebook](docs/ebook/index.html) for screenshots and worked examples.
+
+---
+
+## Projections
 
 A forty-year projection has to name years no legislature has legislated for, so the
 statutory parameters can be projected — from explicit assumptions, and labelled:
@@ -148,22 +182,8 @@ cargo run -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 \
   2065   6.102,90    3.677,94   1.177,95    637.114,68     41,58     2.397,65
 ```
 
-Every month runs the same verified payroll code that produces a payslip, against the
-statutory parameters for that year. The row where enacted law ends is marked rather than
-footnoted.
-
-Life events change the course of it — `--part-time 3:8:60` for five years at three days a
-week, `--break 5:6` for a year off, `--raise 15:8000` for a promotion:
-
-```sh
-cargo run -p casivell-cli -- project --gross 4500 --class 1 --expenses 2500 \
-    --part-time 3:8:60 --pay-growth 2,8
-```
-
-Five years at 60 % pushes this household into deficit for six years, and its pension record
-accrues 0,62 Entgeltpunkte a year instead of 1,04 — a shortfall that does *not* recover when
-the hours do, because Entgeltpunkte are a ratio to the national average wage. That is the
-Teilzeitfalle, and showing it is the point of the exercise.
+Life events change the course of it — `--part-time 3:8:60`, `--break 5:6`,
+`--raise 15:8000`, `--child-born 2`, `--parental-leave 2:14`.
 
 ---
 
@@ -173,11 +193,11 @@ Requires a Rust toolchain; the channel and targets are pinned in
 `rust-toolchain.toml`.
 
 ```sh
-cargo test --workspace                                        # 654 tests
-cargo clippy --workspace --all-targets -- -D warnings         # clean at `pedantic`
+cargo test --workspace                                         # 654 tests
+cargo clippy --workspace --all-targets -- -D warnings          # clean at `pedantic`
 cargo build --workspace --target wasm32-unknown-unknown --release
-python3 scripts/check_no_statutory_literals.py                # rule D2
-python3 docs/reference/generate_tariff_reference.py           # cross-check values
+python3 scripts/check_no_statutory_literals.py                 # rule D2
+python3 docs/reference/generate_tariff_reference.py            # cross-check values
 ```
 
 Every one of these is a CI step, run with the identical command. A CI that cannot
@@ -284,6 +304,20 @@ This machinery has already caught a live error. A test asserting the care-insura
 rate floor at 2.4 % — a figure current secondary sources still publish — failed
 against the table's 2.6 %. The table was right: 2.4 % belongs to the 3.4 % base-rate
 era that ended in 2024.
+
+---
+
+## Documentation
+
+- **[docs/ebook/index.html](docs/ebook/index.html)** — a complete novice-to-professional
+  guide with concepts, architecture, CLI examples, web UI screenshots and verification.
+- **[docs/walkthrough/index.html](docs/walkthrough/index.html)** — a short visual
+  walkthrough of the browser build with real screenshots.
+- **[docs/CODING_STANDARD.md](docs/CODING_STANDARD.md)** — the full engineering rules.
+- **[docs/LIMITATIONS.md](docs/LIMITATIONS.md)** — what Casivell does not do.
+- **[ROADMAP.md](ROADMAP.md)** — current state and planned phases.
+- **[docs/ROADMAP_ERRATA.md](docs/ROADMAP_ERRATA.md)** — record of the previous
+  version's errors and the fixes that followed.
 
 ---
 

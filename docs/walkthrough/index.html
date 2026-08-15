@@ -58,10 +58,37 @@
            font-size: .85rem; opacity: .7; }
   section { scroll-margin-top: 1rem; }
   @media print {
-    nav.toc { display: none; }
-    h2 { break-before: page; }
-    pre, figure { break-inside: avoid; }
+    /* A PDF is read on paper or in a viewer that does not follow a system theme, so the
+       page commits to light and keeps its backgrounds — without `print-color-adjust` the
+       code blocks and cards print as untinted boxes and lose their edges. */
+    :root { color-scheme: light; --line: #d4d4d4; --soft: #f4f4f4; --accent: #8a8a8a; }
+    html, body { background: #fff; color: #111; }
+    * { print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+
+    body { max-width: none; padding: 0; font-size: 10.5pt; line-height: 1.5; }
+    h1 { font-size: 22pt; }
+    /* Sections flow rather than each starting a new page. Forcing a break before every
+       heading left pages two-thirds empty — one held a single paragraph — which makes a
+       nineteen-page document out of eleven pages of content and is worse to read, not more
+       formal. Headings simply refuse to be the last thing on a page. */
+    h2 { font-size: 14pt; break-after: avoid; margin-top: 2rem; padding-top: 1rem; }
+    h3 { font-size: 11pt; break-after: avoid; }
+    section { break-inside: auto; }
+
+    /* Chromium preserves the internal links, so the contents stay useful in a viewer. */
+    nav.toc a { border-color: #d4d4d4; }
+
+    pre { font-size: 7.5pt; line-height: 1.45; break-inside: avoid; background: #f4f4f4;
+          border-color: #d4d4d4; }
+    figure, .card, .note, .warn, li { break-inside: avoid; }
+    figure img { border-color: #d4d4d4; max-height: 20cm; object-fit: contain;
+                 object-position: top; }
+    figure.narrow img { max-width: 11cm; }
+    p, figcaption { orphans: 3; widows: 3; }
+    a { text-decoration: none; }
+    footer { break-inside: avoid; }
   }
+  @page { size: A4; margin: 16mm 15mm 18mm; }
 </style>
 </head>
 <body>
@@ -175,15 +202,16 @@ German.</p>
 <div class="grid two">
   <figure><img src="screens/01-payslip.png" alt="The page in English."><figcaption>English —
   <code>?lang=en</code></figcaption></figure>
-  <figure><img src="screens/02-payslip-de.png" alt="The same page in German."><figcaption>Deutsch
+  <figure><img src="screens/02-payslip-de.png" alt="The same page in German. The figures are
+  identical to the English version; only the labels and the chrome change."><figcaption>Deutsch
   — <code>?lang=de</code></figcaption></figure>
 </div>
 <p>Look at the two result tables: they are <strong>identical</strong>. Only the chrome and the
 explanations change. That is the design — a statutory term has one name, and it is the one on
 the form.</p>
 <figure class="narrow"><img src="screens/06-narrow.png" alt="The page at a narrow viewport,
-485 pixels wide, with the form collapsed to fewer columns and everything still fitting.">
-<figcaption>Narrow viewport. Below this width the form collapses to a single column; the tables
+375 pixels wide, with the form collapsed to a single column and the result table still fitting.">
+<figcaption>Narrow viewport. The form collapses to a single column; the tables
 scroll inside their own box rather than pushing the page sideways.</figcaption></figure>
 </section>
 

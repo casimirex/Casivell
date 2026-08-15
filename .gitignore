@@ -34,3 +34,5 @@ dist/
 
 # The browser build artefact; see web/README.md to rebuild it.
 web/*.wasm
+.env
+*.env

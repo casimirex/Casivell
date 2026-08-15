@@ -1,0 +1,14 @@
+{
+  "name": "Casivell — Brutto-Netto",
+  "short_name": "Casivell",
+  "description": "Deutsche Lohn- und Einkommensteuer, gerechnet nach dem BMF-Programmablaufplan. Rechnet vollständig auf dem Gerät.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "lang": "de",
+  "background_color": "#ffffff",
+  "theme_color": "#1a1a1a",
+  "icons": [
+    { "src": "./icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

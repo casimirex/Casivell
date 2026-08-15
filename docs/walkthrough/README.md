@@ -6,8 +6,8 @@ Open it directly in a browser; it needs no server.
 
 ## How it was made, and what that means for trusting it
 
-- **`screens/`** — real captures of the running browser build, taken with headless Chromium
-  against a local server. Not mock-ups, and not redrawn.
+- **`screens/`** — real captures of the running `web-react` build (`web-react/dist/`), taken
+  with headless Chromium against a local server. Not mock-ups, and not redrawn.
 - **`cli/`** — real terminal output, captured by running each command and redirected to a file.
   Pasted into the page unedited apart from choosing which lines to show.
 
@@ -16,7 +16,7 @@ figures in the page are therefore only ever as current as the build that produce
 
 ## A caveat about the narrow-viewport screenshot
 
-Headless Chromium clamps its layout viewport at 485 px, so `06-narrow.png` is the narrowest
-width it will actually lay out — not a phone. Below that width the form collapses to a single
-column and the wide tables scroll inside their own box, which is verified by the CSS rather
-than by a screenshot.
+`06-narrow.png` was taken at a 375 px wide viewport (smaller than what the old static page
+clamped to). At that size the form collapses to a single column and the tables scroll inside
+their own box rather than pushing the page sideways. It is taken from the React build
+(`web-react/dist/`) served by a local HTTP server.
